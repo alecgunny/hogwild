@@ -1,6 +1,5 @@
 #!/bin/bash
 HELP=false
-WORKERS=false
 OPTS=`getopt -o b:w:e:d:f:h --long batch_size:,workers:,epochs:,hidden_dims:,log_frequency:,help -n 'parse-options' -- "$@"`
 if [ $? != 0 ] ; then echo "Failed parsing options." >&2 ; exit 1 ; fi
 eval set -- "$OPTS"
@@ -10,7 +9,7 @@ eval set -- "$OPTS"
 while true; do
   case "$1" in
     -b | --batch_size )    STATIC_ARGS+="--batch_size $2 "; shift; shift ;;
-    -w | --workers )       STATIC_ARGS+="--num_tasks $2 "; WORKERS=$2; shift; shift ;;
+    -w | --workers )       WORKERS=$2; shift; shift ;;
     -e | --epochs )        STATIC_ARGS+="--epochs $2 "; shift; shift ;;
     -d | --hidden_dims )   STATIC_ARGS+="--hidden_dims ${2//,/ } "; shift; shift ;;
     -f | --log_frequency ) STATIC_ARGS+="--log_frequency $2 "; shift; shift ;;
@@ -33,11 +32,7 @@ if [ "$HELP" = true ]; then
   exit 0
 fi
 
-if [ "$WORKERS" = false ]; then
-  STATIC_ARGS+="--num_tasks 1"
-  WORKERS=1
-fi
-
+STATIC_ARGS+="--num_tasks $WORKERS"
 echo $STATIC_ARGS
 
 # initialize chief node and parameter serving node

@@ -16,8 +16,17 @@ class _LoggerHook(tf.train.SessionRunHook):
     self.log_frequency = log_frequency
     super(_LoggerHook, self).__init__()
 
+  def _load_global_step_from_checkpoint_dir(self, checkpoint_dir):
+    checkpoint_reader = tf.train.NewCheckpointReader(
+      tf.train.latest_checkpoint(checkpoint_dir))
+    return checkpoint_reader.get_tensor(tf.GraphKeys.GLOBAL_STEP)
+
   def begin(self):
     self._start_time = time.time()
+    try:
+      self._init_step = self._load_global_step_from_checkpoint_dir(model_dir)
+    except TypeError:
+      self._init_step = 0
 
   def before_run(self, run_context):
     return tf.train.SessionRunArgs(tf.train.get_global_step())
@@ -25,11 +34,12 @@ class _LoggerHook(tf.train.SessionRunHook):
   def after_run(self, run_context, run_values):
     step = run_values.results + 1
     if step % self.log_frequency == 0 and FLAGS.job_name == 'worker':
+      steps_since_start = step - self._init_step
       current_time = time.time()
       duration = current_time - self._start_time
 
-      examples_per_sec = step * FLAGS.batch_size / duration
-      sec_per_batch = duration / step
+      examples_per_sec = steps_since_start * FLAGS.batch_size / duration
+      sec_per_batch = duration / steps_since_start
 
       format_str = "Step {}: {:0.1f} examples/sec; {:0.4f} sec/batch"
       print(format_str.format(step, examples_per_sec, sec_per_batch))
