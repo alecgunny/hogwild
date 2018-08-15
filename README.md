@@ -12,4 +12,4 @@ To build, just use `docker build -t $USER/hogwild .`, which builds an executable
 
 An example command to run would be
 
-`nvidia-docker run --rm -it $USER/hogwild --batch_size 512 --epochs 4000 --hidden_dims 1024,512,256 --log_frequency 200 --workers 4`
+`NV_GPU=0 nvidia-docker run --rm -it $USER/hogwild --batch_size 512 --epochs 4000 --hidden_dims 1024,512,256 --log_frequency 200 --workers 4`

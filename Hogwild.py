@@ -1,4 +1,5 @@
 import tensorflow as tf
+from tensorflow.python.estimator.training import _DELAY_SECS_PER_WORKER, _MAX_DELAY_SECS
 import argparse
 import time
 import datetime
@@ -6,7 +7,6 @@ import os
 import json
 import numpy as np
 
-FLAGS = None
 model_dir = '/logs'
 
 
@@ -23,10 +23,11 @@ class _LoggerHook(tf.train.SessionRunHook):
 
   def begin(self):
     self._start_time = time.time()
-    try:
-      self._init_step = self._load_global_step_from_checkpoint_dir(model_dir)
-    except TypeError:
-      self._init_step = 0
+    self._start_time -= max(_DELAY_SECS_PER_WORKER*FLAGS.task_index, _MAX_DELAY_SECS)
+    # try:
+    #   self._init_step = self._load_global_step_from_checkpoint_dir(model_dir)
+    # except TypeError:
+    #   self._init_step = 0
 
   def before_run(self, run_context):
     return tf.train.SessionRunArgs(tf.train.get_global_step())
