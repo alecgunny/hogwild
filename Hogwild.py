@@ -23,11 +23,7 @@ class _LoggerHook(tf.train.SessionRunHook):
 
   def begin(self):
     self._start_time = time.time()
-    self._start_time -= max(_DELAY_SECS_PER_WORKER*FLAGS.task_index, _MAX_DELAY_SECS)
-    # try:
-    #   self._init_step = self._load_global_step_from_checkpoint_dir(model_dir)
-    # except TypeError:
-    #   self._init_step = 0
+    self._start_time -= min(_DELAY_SECS_PER_WORKER*FLAGS.task_index, _MAX_DELAY_SECS)
 
   def before_run(self, run_context):
     return tf.train.SessionRunArgs(tf.train.get_global_step())
@@ -35,12 +31,11 @@ class _LoggerHook(tf.train.SessionRunHook):
   def after_run(self, run_context, run_values):
     step = run_values.results + 1
     if step % self.log_frequency == 0 and FLAGS.job_name == 'worker':
-      steps_since_start = step
       current_time = time.time()
       duration = current_time - self._start_time
 
-      examples_per_sec = steps_since_start * FLAGS.batch_size / duration
-      sec_per_batch = duration / steps_since_start
+      examples_per_sec = step * FLAGS.batch_size / duration
+      sec_per_batch = duration / step
 
       format_str = "Step {}: {:0.1f} examples/sec; {:0.4f} sec/batch"
       print(format_str.format(step, examples_per_sec, sec_per_batch))
@@ -75,8 +70,11 @@ def model_fn(
       sp_weights=sp_weights,
       combiner='sum')
     net = tf.nn.relu(net)
-  for units in params['hidden_units']:
-    net = tf.layers.dense(net, units=units, activation=tf.nn.relu)
+
+  for i, units in enumerate(params['hidden_units']):
+    with tf.variable_scope('hiddenlayer{}'.format(i+1)) as hidden_layer_scope:
+      net = tf.layers.dense(net, units=units, activation=tf.nn.relu)
+
   logits = tf.layers.dense(net, params['n_classes'], activation=None)
   loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
 
@@ -155,16 +153,15 @@ def main():
     dataset = tf.data.Dataset.from_generator(train_input_gen, dtypes)
     return dataset.make_one_shot_iterator().get_next()
 
-  output = estimator._get_features_and_labels_from_input_fn(train_input_fn, tf.estimator.ModeKeys.TRAIN)
   train_hooks = [_LoggerHook(FLAGS.log_frequency)]
-  train_spec = tf.estimator.TrainSpec(input_fn=train_input_fn, max_steps=FLAGS.epochs, hooks=train_hooks)
+  train_spec = tf.estimator.TrainSpec(input_fn=train_input_fn, max_steps=FLAGS.steps, hooks=train_hooks)
   eval_spec = tf.estimator.EvalSpec(input_fn=train_input_fn)
   tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
 
-  # Flags for defining the tf.train.ClusterSpec
+  # Flags for defining cluster
   parser.add_argument(
     "--job_name",
     type=str,
@@ -172,7 +169,6 @@ if __name__ == '__main__':
     choices=["worker", "ps", "chief"],
     help="One of 'chief', 'worker', or 'ps'")
 
-  # Flags for defining the tf.train.Server
   parser.add_argument(
     "--task_index",
     type=int,
@@ -200,16 +196,16 @@ if __name__ == '__main__':
     help="batch size")
 
   parser.add_argument(
-    "--epochs",
+    "--steps",
     type=int,
     default=2000,
-    help="number of epochs")
+    help="total number of gradient updates to apply")
 
   parser.add_argument(
     "--log_frequency",
     type=int,
     default=100,
-    help="number of epochs between print logging")
+    help="number of steps between print logging")
 
   # sparsity flags
   parser.add_argument(
