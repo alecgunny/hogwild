@@ -2,7 +2,6 @@ import tensorflow as tf
 from tensorflow.python.estimator.training import _DELAY_SECS_PER_WORKER, _MAX_DELAY_SECS
 import argparse
 import time
-import datetime
 import os
 import json
 import numpy as np
