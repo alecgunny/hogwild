@@ -1,6 +1,4 @@
-## HogWild!
-
-GPU friendly TensorFlow implementation of Hogwild!, the sparse asynchronous optimization algorithm, discussed in <a href=https://people.eecs.berkeley.edu/~brecht/papers/hogwildTR.pdf>this paper</a>. Leverages the TF estimator API to build a multilayer perceptron with a tf.nn.embedding_lookup_sparse operation at the front to replace the traditional matrix multiplication.
+GPU friendly TensorFlow implementation of Hogwild!, the sparse asynchronous optimization algorithm, introduced in <a href=https://people.eecs.berkeley.edu/~brecht/papers/hogwildTR.pdf>this paper</a> from Berkeley (Go Bears). Leverages the TF estimator API to build a multilayer perceptron with a tf.nn.embedding_lookup_sparse operation at the front to replace the traditional matrix multiplication.
 
 Inputs to the estimator are 4 dimensional, with the first two columns indexing two sparse matrices, the first of which contains the nonzero indices of the dense input (which are in the third column of our input), and the second of which contains the values at that input (which are in the fourth). This is useful in case there are order of magnitude differences in the number of nonzero elements between samples. Since we're working with dummy data, the minimum and maximum number of elements can be set from the command line with `--min_nnz` and `--max_nnz`, with the actual number drawn uniformly between them.
 
