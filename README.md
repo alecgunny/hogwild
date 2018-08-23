@@ -12,4 +12,12 @@ To build, just use `docker build -t $USER/hogwild .`, which builds an executable
 
 An example command to run would be
 
-`NV_GPU=0 nvidia-docker run --rm -it $USER/hogwild --batch_size 512 --steps 4000 --hidden_dims 128,1024,1024,512 --dense_size 2000000 --max_nnz 100 --log_frequency 200 --workers 4`
+`docker run --rm -it --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=0 $USER/hogwild --batch_size 512 --steps 4000 --hidden_dims 128,1024,1024,512 --dense_size 2000000 --max_nnz 100 --log_frequency 200 --workers 4`
+
+If you want to save the model checkpoints, just volume map a directory into the container and set the `--model_dir` flag
+
+```
+NAME=foo
+mkdir -p logs/$NAME 
+docker run --rm -it --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=0 -v $(pwd)/logs/$NAME:/logs $USER/hogwild --model_dir /logs
+```
