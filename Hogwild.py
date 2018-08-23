@@ -7,8 +7,6 @@ import os
 import json
 import numpy as np
 
-model_dir = '/logs'
-
 
 class _LoggerHook(tf.train.SessionRunHook):
   """Logs loss and runtime."""
@@ -109,7 +107,7 @@ def main():
   gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.1, allow_growth=True)
   session_config = tf.ConfigProto(gpu_options=gpu_options)
   config = tf.estimator.RunConfig(
-    model_dir=model_dir,
+    model_dir=FLAGS.model_dir,
     session_config=session_config,
     save_checkpoints_steps=100)    
 
@@ -200,6 +198,12 @@ if __name__ == '__main__':
     type=int,
     default=2000,
     help="total number of gradient updates to apply")
+
+  parser.add_argument(
+    "--model_dir",
+    type=str,
+    default="/logs",
+    help="where to save model checkpoints")
 
   parser.add_argument(
     "--log_frequency",
