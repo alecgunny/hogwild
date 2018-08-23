@@ -104,7 +104,7 @@ def model_fn(
 def main():
   n_classes = 10
 
-  gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.1, allow_growth=True)
+  gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5, allow_growth=True)
   session_config = tf.ConfigProto(gpu_options=gpu_options)
   config = tf.estimator.RunConfig(
     model_dir=FLAGS.model_dir,
@@ -135,11 +135,11 @@ def main():
     generate_idx = lambda : np.random.randint(estimator_params['dense_size'], size=generate_size())
     while True:
       nz_idx = [generate_idx() for _ in range(FLAGS.batch_size)]
-      batch_idx = [[i]*len(idx) for i, idx in enumerate(nz_idx)]
+      batch_idx = np.repeat(np.arange(FLAGS.batch_size), [len(i) for i in nz_idx])
       idx_row = [np.arange(len(idx)) for idx in nz_idx]
       values = [np.random.uniform(5, size=len(idx)) for idx in nz_idx]
       X = {
-        'batch_idx': np.concatenate(batch_idx),
+        'batch_idx': batch_idx,
         'idx_row': np.concatenate(idx_row),
         'embedding_row': np.concatenate(nz_idx),
         'value': np.concatenate(values)}
