@@ -1,6 +1,6 @@
 #!/bin/bash
 HELP=false
-OPTS=`getopt -o b:w:e:d:f:h --long batch_size:,workers:,epochs:,hidden_dims:,log_frequency:,help -n 'parse-options' -- "$@"`
+OPTS=`getopt -o b:w:e:d:f:m:n:s:h --long batch_size:,workers:,epochs:,hidden_dims:,log_frequency:,min_nnz:,max_nnz:,dense_size:,help -n 'parse-options' -- "$@"`
 if [ $? != 0 ] ; then echo "Failed parsing options." >&2 ; exit 1 ; fi
 eval set -- "$OPTS"
 
@@ -13,6 +13,9 @@ while true; do
     -e | --epochs )        STATIC_ARGS+="--epochs $2 "; shift; shift ;;
     -d | --hidden_dims )   STATIC_ARGS+="--hidden_dims ${2//,/ } "; shift; shift ;;
     -f | --log_frequency ) STATIC_ARGS+="--log_frequency $2 "; shift; shift ;;
+    -m | --min_nnz )       STATIC_ARGS+="--min_nnz $2 "; shift; shift ;;
+    -n | --max_nnz )       STATIC_ARGS+="--max_nnz $2 "; shift; shift ;;
+    -s | --dense_size )    STATIC_ARGS+="--dense_size $2 "; shift; shift ;;
     -h | --help )          HELP=true; shift ;;
     -- ) shift; break ;;
     * ) break ;;
@@ -28,6 +31,9 @@ if [ "$HELP" = true ]; then
   echo "    --epochs, -e        : number of training epochs. Important to allow all workers to spin up"
   echo "    --hidden_dims, -d   : size of hidden layers of MLP seperated by commas (e.g. 512,512,256)"
   echo "    --log_frequency, -f : epochs between stdout logging"
+  echo "    --min_nnz, -m       : minimum number of nonzero elements in a sample of random data"
+  echo "    --max_nnz, -n       : maximum number of nonzero elements in a sample of random data"
+  echo "    --dense_size, -s    : full dimensionality of input space"
   echo "    --help, -h          : show this help"
   exit 0
 fi

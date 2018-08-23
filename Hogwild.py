@@ -35,7 +35,7 @@ class _LoggerHook(tf.train.SessionRunHook):
   def after_run(self, run_context, run_values):
     step = run_values.results + 1
     if step % self.log_frequency == 0 and FLAGS.job_name == 'worker':
-      steps_since_start = step - self._init_step
+      steps_since_start = step
       current_time = time.time()
       duration = current_time - self._start_time
 
@@ -51,8 +51,61 @@ class _LoggerHook(tf.train.SessionRunHook):
         print("Training complete, total time {:0.3f} s".format(total_time))
 
 
+def model_fn(
+    features,
+    labels,
+    mode,
+    params):
+  net = tf.feature_column.input_layer(features, params['feature_columns'])
+  with tf.variable_scope('embedding') as embedding_scope:
+    embedding_dim = params['hidden_units'].pop(0)
+    embedding_matrix = tf.get_variable('embedding_matrix', shape=(params['dense_size'], embedding_dim))
+
+    indices = tf.cast(net[:, :2], tf.int64)
+    ids = tf.cast(net[:, 2], tf.int64)
+    values = net[:, 3]
+
+    dense_shape = [params['batch_size'], params['max_nnz']]
+    sp_ids = tf.SparseTensor(indices=indices, values=ids, dense_shape=dense_shape)
+    sp_weights = tf.SparseTensor(indices=indices, values=values, dense_shape=dense_shape)
+
+    net = tf.nn.embedding_lookup_sparse(
+      embedding_matrix,
+      sp_ids=sp_ids,
+      sp_weights=sp_weights,
+      combiner='sum')
+    net = tf.nn.relu(net)
+  for units in params['hidden_units']:
+    net = tf.layers.dense(net, units=units, activation=tf.nn.relu)
+  logits = tf.layers.dense(net, params['n_classes'], activation=None)
+  loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
+
+  if mode == tf.estimator.ModeKeys.TRAIN:
+    optimizer = tf.train.GradientDescentOptimizer(0.001)
+    train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
+    return tf.estimator.EstimatorSpec(mode, loss=loss, train_op=train_op)
+
+  predicted_classes = tf.argmax(logits, 1)
+  if mode == tf.estimator.ModeKeys.PREDICT:
+    predictions = {
+        'class_ids': predicted_classes[:, tf.newaxis],
+        'probabilities': tf.nn.softmax(logits),
+        'logits': logits,
+    }
+    return tf.estimator.EstimatorSpec(mode, predictions=predictions)
+
+  accuracy = tf.metrics.accuracy(
+    labels=labels,
+    predictions=predicted_classes,
+    name='acc_op')
+  metrics = {'accuracy': accuracy}
+  tf.summary.scalar('accuracy', accuracy[1])
+  if mode == tf.estimator.ModeKeys.EVAL:
+    return tf.estimator.EstimatorSpec(
+      mode, loss=loss, eval_metric_ops=metrics)
+
+
 def main():
-  n_input = 100
   n_classes = 10
 
   gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.1, allow_growth=True)
@@ -62,19 +115,45 @@ def main():
     session_config=session_config,
     save_checkpoints_steps=100)    
 
-  columns = [tf.feature_column.numeric_column(key='col{}'.format(i), dtype=tf.float32) for i in range(n_input)]
-  estimator = tf.estimator.DNNClassifier(
-    FLAGS.hidden_sizes,
-    columns,
-    n_classes=n_classes,
+  columns = [
+    tf.feature_column.numeric_column('batch_idx', dtype=tf.int32),
+    tf.feature_column.numeric_column('idx_row', dtype=tf.int32),
+    tf.feature_column.numeric_column('embedding_row', dtype=tf.int32),
+    tf.feature_column.numeric_column('value', dtype=tf.float32)]
+  estimator_params = {
+    'feature_columns': columns,
+    'max_nnz': FLAGS.max_nnz,
+    'hidden_units': FLAGS.hidden_sizes,
+    'batch_size': FLAGS.batch_size,
+    'n_classes': n_classes,
+    'dense_size': FLAGS.dense_size}
+  estimator = tf.estimator.Estimator(
+    model_fn=model_fn,
+    params=estimator_params,
     config=config)
 
-  def train_input_fn():
-    X = np.random.randn(FLAGS.batch_size*100, n_input)
-    X = {'col{}'.format(i): X[:, i] for i in range(n_input)}
-    y = np.random.randint(n_classes, size=FLAGS.batch_size*100)
-    return tf.data.Dataset.from_tensor_slices((X,y)).repeat().batch(FLAGS.batch_size)
+  def train_input_gen():
+    generate_size = lambda: np.random.randint(FLAGS.min_nnz, FLAGS.max_nnz)
+    generate_idx = lambda : np.random.randint(estimator_params['dense_size'], size=generate_size())
+    while True:
+      nz_idx = [generate_idx() for _ in range(FLAGS.batch_size)]
+      batch_idx = [[i]*len(idx) for i, idx in enumerate(nz_idx)]
+      idx_row = [np.arange(len(idx)) for idx in nz_idx]
+      values = [np.random.uniform(5, size=len(idx)) for idx in nz_idx]
+      X = {
+        'batch_idx': np.concatenate(batch_idx),
+        'idx_row': np.concatenate(idx_row),
+        'embedding_row': np.concatenate(nz_idx),
+        'value': np.concatenate(values)}
+      y = np.random.randint(n_classes, size=FLAGS.batch_size)
+      yield X, y
 
+  def train_input_fn():
+    dtypes = ({col.name: col.dtype for col in columns}, tf.int32)
+    dataset = tf.data.Dataset.from_generator(train_input_gen, dtypes)
+    return dataset.make_one_shot_iterator().get_next()
+
+  output = estimator._get_features_and_labels_from_input_fn(train_input_fn, tf.estimator.ModeKeys.TRAIN)
   train_hooks = [_LoggerHook(FLAGS.log_frequency)]
   train_spec = tf.estimator.TrainSpec(input_fn=train_input_fn, max_steps=FLAGS.epochs, hooks=train_hooks)
   eval_spec = tf.estimator.EvalSpec(input_fn=train_input_fn)
@@ -109,13 +188,13 @@ if __name__ == '__main__':
     "--hidden_sizes",
     type=int,
     nargs="+",
-    default=[1024, 1024],
+    default=[128, 64],
     help="hidden dimensions of mlp")
 
   parser.add_argument(
     "--batch_size",
     type=int,
-    default=64,
+    default=8,
     help="batch size")
 
   parser.add_argument(
@@ -130,7 +209,29 @@ if __name__ == '__main__':
     default=100,
     help="number of epochs between print logging")
 
+  # sparsity flags
+  parser.add_argument(
+    "--dense_size",
+    type=int,
+    default=1<<20,
+    help="Dimensionality of input space")
+
+  parser.add_argument(
+    "--max_nnz",
+    type=int,
+    default=100,
+    help="maximum number of nonzero elements in a sample")
+
+  parser.add_argument(
+    "--min_nnz",
+    type=int,
+    default=10,
+    help="minimum number of nonzero elements in a sample")
+
   FLAGS, unparsed = parser.parse_known_args()
+  if FLAGS.dense_size < 30:
+    FLAGS.dense_size = 1 << FLAGS.dense_size
+  print(vars(FLAGS))
 
   cluster = {
     'ps': ['localhost: 2221'],
