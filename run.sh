@@ -5,7 +5,6 @@ if [ $? != 0 ] ; then echo "Failed parsing options." >&2 ; exit 1 ; fi
 eval set -- "$OPTS"
 
 STATIC_ARGS=""
-eval set -- "$OPTS"
 while true; do
   case "$1" in
     -b | --batch_size )    STATIC_ARGS+="--batch_size $2 "; shift; shift ;;
