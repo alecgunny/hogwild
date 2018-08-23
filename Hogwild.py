@@ -120,6 +120,7 @@ def main():
     tf.feature_column.numeric_column('idx_row', dtype=tf.int32),
     tf.feature_column.numeric_column('embedding_row', dtype=tf.int32),
     tf.feature_column.numeric_column('value', dtype=tf.float32)]
+
   estimator_params = {
     'feature_columns': columns,
     'max_nnz': FLAGS.max_nnz,
@@ -127,6 +128,7 @@ def main():
     'batch_size': FLAGS.batch_size,
     'n_classes': n_classes,
     'dense_size': FLAGS.dense_size}
+
   estimator = tf.estimator.Estimator(
     model_fn=model_fn,
     params=estimator_params,
@@ -231,7 +233,6 @@ if __name__ == '__main__':
   FLAGS, unparsed = parser.parse_known_args()
   if FLAGS.dense_size < 30:
     FLAGS.dense_size = 1 << FLAGS.dense_size
-  print(vars(FLAGS))
 
   cluster = {
     'ps': ['localhost: 2221'],
