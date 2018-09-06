@@ -43,21 +43,25 @@ if [ "$HELP" = true ]; then
   exit 0
 fi
 
-STATIC_ARGS+="--num_tasks $WORKERS"
-STATIC_ARGS+="--num_gpus $NUM_GPUS"
+STATIC_ARGS+="--num_tasks $WORKERS --num_gpus $NUM_GPUS"
 echo $STATIC_ARGS
 
-CMD=docker run --rm -it -d --runtime=nvidia --net="host"
+PORT_MAPS="-p 2221:2221 -p 2222:2222 "
+for i in $(seq 1 $((NUM_GPUS*WORKERS))); do
+  PORT_MAPS+="-p $((2222+i)):$((2222+i)) "
+done
+CMD="docker run --rm -it -d --runtime=nvidia"
+echo $CMD
 
 # initialize chief node and parameter serving node
-$CMD -e NVIDIA_VISIBLE_DEVICES=0 $USER/hogwild python Hogwild.py --job_name chief --task_index 0 $STATIC_ARGS
-$CMD -e NVIDIA_VISIBLE_DEVICES=0 $USER/hogwild python Hogwild.py --job_name ps --task_index 0 $STATIC_ARGS
+$CMD -e NVIDIA_VISIBLE_DEVICES=0 --net="host" $USER/hogwild python Hogwild.py --job_name chief --task_index 0 --gpu_index 0 $STATIC_ARGS
+$CMD -e NVIDIA_VISIBLE_DEVICES=0 --net="host" $USER/hogwild python Hogwild.py --job_name ps --task_index 0 --gpu_index 0 $STATIC_ARGS
 
 # execute last job foreground to keep container from exiting
 for g in $(seq 1 $NUM_GPUS); do
   g=$((g-1))
   for i in $(seq 1 $WORKERS ); do
     TASK_IDX=$((g*WORKERS+i-1))
-    $CMD -e NVIDIA_VISIBLE_DEVICES=$g $USER/hogwild python Hogwild.py --job_name worker --task_index $TASK_IDX --gpu_index $g $STATIC_ARGS
+    $CMD -e NVIDIA_VISIBLE_DEVICES=$g --net="host" $USER/hogwild python Hogwild.py --job_name worker --task_index $TASK_IDX --gpu_index $g $STATIC_ARGS
   done
 done
