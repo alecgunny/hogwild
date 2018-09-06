@@ -43,6 +43,12 @@ class _LoggerHook(tf.train.SessionRunHook):
         print("Training complete, total time {:0.3f} s".format(total_time))
 
 
+class _ProfilerHook(tf.train.ProfilerHook):
+  def after_run(self, run_context, run_values):
+    if FLAGS.job_name == 'worker' and FLAGS.task_index == FLAGS.num_tasks - 1:
+      super(_ProfilerHook, self).after_run(run_context, run_values)
+
+
 def model_fn(
     features,
     labels,
@@ -150,7 +156,14 @@ def main():
     dataset = tf.data.Dataset.from_generator(train_input_gen, dtypes)
     return dataset.make_one_shot_iterator().get_next()
 
-  train_hooks = [_LoggerHook(FLAGS.log_frequency)]
+  train_hooks = [
+    _LoggerHook(FLAGS.log_frequency),
+    _ProfilerHook(
+      save_steps=FLAGS.log_frequency,
+      output_dir=FLAGS.profile_dir,
+      show_dataflow=True,
+      show_memory=True)]
+
   train_spec = tf.estimator.TrainSpec(input_fn=train_input_fn, max_steps=FLAGS.steps, hooks=train_hooks)
   eval_spec = tf.estimator.EvalSpec(input_fn=train_input_fn)
   tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
@@ -201,7 +214,7 @@ if __name__ == '__main__':
   parser.add_argument(
     "--model_dir",
     type=str,
-    default="/logs",
+    default=None,
     help="where to save model checkpoints")
 
   parser.add_argument(
@@ -209,6 +222,12 @@ if __name__ == '__main__':
     type=int,
     default=100,
     help="number of steps between print logging")
+
+  parser.add_argument(
+    "--profile_dir",
+    type=str,
+    default="/profile",
+    help="where to save profiler timelines")
 
   # sparsity flags
   parser.add_argument(
