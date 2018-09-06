@@ -44,9 +44,10 @@ class _LoggerHook(tf.train.SessionRunHook):
 
 
 class _ProfilerHook(tf.train.ProfilerHook):
-  def after_run(self, run_context, run_values):
-    if FLAGS.job_name == 'worker' and FLAGS.task_index == FLAGS.num_tasks - 1:
-      super(_ProfilerHook, self).after_run(run_context, run_values)
+  pass
+  # def after_run(self, run_context, run_values):
+  #   if FLAGS.job_name == 'worker' and FLAGS.task_index == FLAGS.num_tasks - 1:
+  #     super(_ProfilerHook, self).after_run(run_context, run_values)
 
 
 def model_fn(
@@ -191,6 +192,17 @@ if __name__ == '__main__':
     default=2,
     help="Number of non chief tasks")
 
+  parser.add_argument(
+    "--gpu_index",
+    type=int,
+    help="Index of gpu in distribution")
+
+  parser.add_argument(
+    "--num_gpus",
+    type=int,
+    default=1,
+    help="number of gpus distributed over")
+
   # Flags for defining model properties
   parser.add_argument(
     "--hidden_sizes",
@@ -251,6 +263,9 @@ if __name__ == '__main__':
   FLAGS, unparsed = parser.parse_known_args()
   if FLAGS.dense_size < 30:
     FLAGS.dense_size = 1 << FLAGS.dense_size
+
+  FLAGS.task_index = FLAGS.gpu_index*FLAGS.num_tasks + FLAGS.task_index
+  FLAGS.num_tasks = FLAGS.num_gpus*FLAGS.num_tasks
 
   cluster = {
     'ps': ['localhost: 2221'],

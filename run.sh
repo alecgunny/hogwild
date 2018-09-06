@@ -1,7 +1,8 @@
 #!/bin/bash
 HELP=false
 WORKERS=1
-OPTS=`getopt -o b:w:e:d:f:m:n:s:o:h --long batch_size:,workers:,steps:,hidden_sizes:,log_frequency:,min_nnz:,max_nnz:,dense_size:,model_dir:,help -n 'parse-options' -- "$@"`
+NUM_GPUS=1
+OPTS=`getopt -o b:w:e:d:f:m:n:s:o:g:h --long batch_size:,workers:,steps:,hidden_sizes:,log_frequency:,min_nnz:,max_nnz:,dense_size:,model_dir:,num_gpus:,help -n 'parse-options' -- "$@"`
 if [ $? != 0 ] ; then echo "Failed parsing options." >&2 ; exit 1 ; fi
 eval set -- "$OPTS"
 
@@ -17,6 +18,7 @@ while true; do
     -n | --max_nnz )       STATIC_ARGS+="--max_nnz $2 "; shift; shift ;;
     -s | --dense_size )    STATIC_ARGS+="--dense_size $2 "; shift; shift ;;
     -o | --model_dir )     STATIC_ARGS+="--model_dir $2 "; shift; shift ;;
+    -g | --num_gpus )      NUM_GPUS=$2; shift; shift;;
     -h | --help )          HELP=true; shift ;;
     -- ) shift; break ;;
     * ) break ;;
@@ -36,19 +38,26 @@ if [ "$HELP" = true ]; then
   echo "    --max_nnz, -n       : maximum number of nonzero elements in a sample of random data"
   echo "    --dense_size, -s    : full dimensionality of sparse input space. If set to less than 30, size will be 1 << dense_size"
   echo "    --model_dir, -o     : where to log model checkpoints. To save after run, volume map this directory into the container"
+  echo "    --num_gpus, -g      : number of gpus to distribute over"
   echo "    --help, -h          : show this help"
   exit 0
 fi
 
 STATIC_ARGS+="--num_tasks $WORKERS"
+STATIC_ARGS+="--num_gpus $NUM_GPUS"
 echo $STATIC_ARGS
 
+CMD=docker run --rm -it -d --runtime=nvidia --net="host"
+
 # initialize chief node and parameter serving node
-python Hogwild.py --job_name chief --task_index 0 $STATIC_ARGS &
-python Hogwild.py --job_name ps --task_index 0 $STATIC_ARGS &
+$CMD -e NVIDIA_VISIBLE_DEVICES=0 $USER/hogwild python Hogwild.py --job_name chief --task_index 0 $STATIC_ARGS
+$CMD -e NVIDIA_VISIBLE_DEVICES=0 $USER/hogwild python Hogwild.py --job_name ps --task_index 0 $STATIC_ARGS
 
 # execute last job foreground to keep container from exiting
-for i in $(seq 2 $WORKERS ); do
-  python Hogwild.py --job_name worker --task_index $((i-2)) $STATIC_ARGS &
+for g in $(seq 1 $NUM_GPUS); do
+  g=$((g-1))
+  for i in $(seq 1 $WORKERS ); do
+    TASK_IDX=$((g*WORKERS+i-1))
+    $CMD -e NVIDIA_VISIBLE_DEVICES=$g $USER/hogwild python Hogwild.py --job_name worker --task_index $TASK_IDX --gpu_index $g $STATIC_ARGS
+  done
 done
-python Hogwild.py --job_name worker --task_index $(($WORKERS-1)) $STATIC_ARGS

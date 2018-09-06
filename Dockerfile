@@ -2,6 +2,6 @@ FROM nvcr.io/nvidia/tensorflow:18.07-py3
 
 WORKDIR /workspace/
 
-COPY Hogwild.py run.sh /workspace/
+COPY Hogwild.py /workspace/
 
-ENTRYPOINT ["./run.sh"]
+ENTRYPOINT ["python", "Hogwild.py"]
