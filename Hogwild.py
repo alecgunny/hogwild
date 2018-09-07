@@ -47,13 +47,6 @@ class _LoggerHook(tf.train.SessionRunHook):
         self.save("Training complete, total time {:0.3f} s\n".format(total_time))
 
 
-class _ProfilerHook(tf.train.ProfilerHook):
-  pass
-  # def after_run(self, run_context, run_values):
-  #   if FLAGS.job_name == 'worker' and FLAGS.task_index == FLAGS.num_tasks - 1:
-  #     super(_ProfilerHook, self).after_run(run_context, run_values)
-
-
 def model_fn(
     features,
     labels,
@@ -161,13 +154,13 @@ def main():
     dataset = tf.data.Dataset.from_generator(train_input_gen, dtypes)
     return dataset.make_one_shot_iterator().get_next()
 
-  train_hooks = [
-    _LoggerHook(FLAGS.log_frequency),
-    _ProfilerHook(
+  train_hooks = [_LoggerHook(FLAGS.log_frequency)]
+  if FLAGS.profile_dir is not None:
+    train_hooks.append(tf.train.ProfilerHook(
       save_steps=FLAGS.log_frequency,
       output_dir=FLAGS.profile_dir,
       show_dataflow=True,
-      show_memory=True)]
+      show_memory=True))
 
   train_spec = tf.estimator.TrainSpec(input_fn=train_input_fn, max_steps=FLAGS.steps, hooks=train_hooks)
   eval_spec = tf.estimator.EvalSpec(input_fn=train_input_fn)
@@ -193,12 +186,7 @@ if __name__ == '__main__':
   parser.add_argument(
     "--num_tasks",
     type=int,
-    help="Number of non chief tasks")
-
-  parser.add_argument(
-    "--num_gpus",
-    type=int,
-    help="Number of GPUs to distribute training over")
+    help="Number of worker tasks")
 
   # Flags for defining model properties
   parser.add_argument(
@@ -235,7 +223,7 @@ if __name__ == '__main__':
   parser.add_argument(
     "--profile_dir",
     type=str,
-    default="/profile",
+    default=None,
     help="where to save profiler timelines")
 
   # sparsity flags
