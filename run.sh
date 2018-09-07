@@ -22,7 +22,7 @@ while true; do
     -n | --max_nnz )       STATIC_ARGS+="--max_nnz $2 "; shift; shift ;;
     -s | --dense_size )    STATIC_ARGS+="--dense_size $2 "; shift; shift ;;
     -o | --model_dir )     MODEL_DIR=$2; shift; shift ;;
-    -p | --profile_dir )   PROFILE_DIR=$2; STATIC_ARGS+="--profile_dir /profile/"; shift; shift ;;
+    -p | --profile_dir )   PROFILE_DIR=$2; STATIC_ARGS+="--profile_dir /profile/ "; shift; shift ;;
     -g | --num_gpus )      NUM_GPUS=$2; shift; shift ;;
     -c | --cpu_ps )        NO_CPU=true; shift ;;
     -h | --help )          HELP=true; shift ;;
@@ -55,28 +55,33 @@ STATIC_ARGS+="--num_tasks $((WORKERS*NUM_GPUS)) --model_dir /tmp/models"
 
 # utility function for creating the necessary volume mounts for model checkpointing and profiling
 check_dir (){
-  # check if a directory is specified
-  if ! [[ -z "$2" ]]; then
-    # clear it if it exists, otherwise create it
-    if [[ -d "$1" ]]; then
-      rm -r $1/*
+  HOST_DIR="$1"
+  CONTAINER_DIR="$2"
+
+  # check if host directory is empty. Note that this would make "$CONTAINER_DIR" $1
+  if ! [[ -z "$CONTAINER_DIR" ]]; then
+    # clear it if it exists and has content, otherwise create it
+    if [[ -d "$HOST_DIR" ]]; then
+      if ! [[ -z "$(ls -A $HOST_DIR)" ]]; then
+        rm -r $HOST_DIR/*
+      fi
     else
-      mkdir -p $1
+      mkdir -p $HOST_DIR
     fi
 
     # if it's a relative path, append it to the pwd
-    if [[ ! "$1" = /* ]]; then
-      1=$(pwd)/$1
+    if [[ ! "$HOST_DIR" = /* ]]; then
+      HOST_DIR=$(pwd)/$HOST_DIR
     fi
 
-    echo " -v $1:$2"
+    echo " -v $HOST_DIR:$CONTAINER_DIR"
   else
     echo ""
   fi
 }
 
 # build the base command
-CMD="docker run --rm -d"
+CMD="docker run --rm -d -u $(id -u):$(id -g)"
 CMD+=$(check_dir $MODEL_DIR /tmp/models)
 CMD+=$(check_dir $PROFILE_DIR /profile)
 
