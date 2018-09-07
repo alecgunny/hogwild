@@ -7,7 +7,9 @@ MODEL_DIR=""
 PROFILE_DIR=""
 INVERT_PS_DEVICE=false
 
-OPTS=`getopt -o b:w:e:d:f:m:n:s:o:p:g:ih --long batch_size:,workers:,steps:,hidden_sizes:,log_frequency:,min_nnz:,max_nnz:,dense_size:,model_dir:,profile_dir:,num_gpus:,invert_ps_device,help -n 'parse-options' -- "$@"`
+SHORT_OPTS="b:w:e:d:f:m:n:s:o:p:g:ih"
+LONG_OPTS="batch_size:,workers:,steps:,hidden_sizes:,log_frequency:,min_nnz:,max_nnz:,dense_size:,model_dir:,profile_dir:,num_gpus:,invert_ps_device,help"
+OPTS=`getopt -o $SHORT_OPTS --long $LONG_OPTS -n 'parse-options' -- "$@"`
 if [ $? != 0 ] ; then echo "Failed parsing options." >&2 ; exit 1 ; fi
 eval set -- "$OPTS"
 
