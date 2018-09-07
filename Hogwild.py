@@ -13,11 +13,6 @@ class _LoggerHook(tf.train.SessionRunHook):
     self.log_frequency = log_frequency
     super(_LoggerHook, self).__init__()
 
-  def _load_global_step_from_checkpoint_dir(self, checkpoint_dir):
-    checkpoint_reader = tf.train.NewCheckpointReader(
-      tf.train.latest_checkpoint(checkpoint_dir))
-    return checkpoint_reader.get_tensor(tf.GraphKeys.GLOBAL_STEP)
-
   def begin(self):
     self._start_time = time.time()
     self._start_time -= min(_DELAY_SECS_PER_WORKER*FLAGS.task_index, _MAX_DELAY_SECS)
