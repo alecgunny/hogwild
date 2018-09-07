@@ -246,8 +246,8 @@ if __name__ == '__main__':
 
   cluster = {
     'ps': ['localhost: 2221'],
-    'chief': ['localhost:{}'.format(i+2222) for i in range(1)],
-    'worker': ['localhost:{}'.format(i+2222+1) for i in range(FLAGS.num_tasks)]
+    'chief': ['localhost:2222'],
+    'worker': ['localhost:{}'.format(i+2223) for i in range(FLAGS.num_tasks)]
   }
   os.environ['TF_CONFIG'] = json.dumps(
     {'cluster': cluster,
