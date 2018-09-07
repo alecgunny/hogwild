@@ -2,6 +2,8 @@
 HELP=false
 WORKERS=1
 NUM_GPUS=1
+MODEL_DIR=""
+
 OPTS=`getopt -o b:w:e:d:f:m:n:s:o:g:h --long batch_size:,workers:,steps:,hidden_sizes:,log_frequency:,min_nnz:,max_nnz:,dense_size:,model_dir:,num_gpus:,help -n 'parse-options' -- "$@"`
 if [ $? != 0 ] ; then echo "Failed parsing options." >&2 ; exit 1 ; fi
 eval set -- "$OPTS"
@@ -17,7 +19,7 @@ while true; do
     -m | --min_nnz )       STATIC_ARGS+="--min_nnz $2 "; shift; shift ;;
     -n | --max_nnz )       STATIC_ARGS+="--max_nnz $2 "; shift; shift ;;
     -s | --dense_size )    STATIC_ARGS+="--dense_size $2 "; shift; shift ;;
-    -o | --model_dir )     STATIC_ARGS+="--model_dir $2 "; shift; shift ;;
+    -o | --model_dir )     MODEL_DIR=$2; shift; shift ;;
     -g | --num_gpus )      NUM_GPUS=$2; shift; shift;;
     -h | --help )          HELP=true; shift ;;
     -- ) shift; break ;;
@@ -43,25 +45,43 @@ if [ "$HELP" = true ]; then
   exit 0
 fi
 
-STATIC_ARGS+="--num_tasks $WORKERS --num_gpus $NUM_GPUS"
-echo $STATIC_ARGS
+STATIC_ARGS+="--num_tasks $((WORKERS*NUM_GPUS)) --model_dir /tmp/models  --num_gpus $NUM_GPUS"
 
-PORT_MAPS="-p 2221:2221 -p 2222:2222 "
-for i in $(seq 1 $((NUM_GPUS*WORKERS))); do
-  PORT_MAPS+="-p $((2222+i)):$((2222+i)) "
-done
-CMD="docker run --rm -it -d --runtime=nvidia"
-echo $CMD
+CMD="docker run --rm -d"
+if ! [[ -z "$MODEL_DIR" ]]; then
+  if [[ -d "$MODEL_DIR" ]]; then
+    rm -r $MODEL_DIR/*
+  else
+    mkdir -p $MODEL_DIR
+  fi
+
+  if [[ ! "$MODEL_DIR" = /* ]]; then
+    MODEL_DIR=$(pwd)/$MODEL_DIR
+  fi
+
+  CMD+=" -v $MODEL_DIR:/tmp/models"
+fi
+CMD+=" -v $(pwd):/workspace/"
+
+rm out.txt
 
 # initialize chief node and parameter serving node
-$CMD -e NVIDIA_VISIBLE_DEVICES=0 --net="host" $USER/hogwild python Hogwild.py --job_name chief --task_index 0 --gpu_index 0 $STATIC_ARGS
-$CMD -e NVIDIA_VISIBLE_DEVICES=0 --net="host" $USER/hogwild python Hogwild.py --job_name ps --task_index 0 --gpu_index 0 $STATIC_ARGS
+HASHES=""
+CHIEF="$CMD --net="host" --name=chief$g $USER/hogwild:cpu --job_name chief --task_index 0 $STATIC_ARGS"
+echo $CHIEF
+HASHES+=$($CHIEF)" "
+
+PS="$CMD --net="host" --name=ps $USER/hogwild:cpu --job_name ps --task_index 0 $STATIC_ARGS"
+echo $PS
+HASHES+=$($PS)" "
 
 # execute last job foreground to keep container from exiting
 for g in $(seq 1 $NUM_GPUS); do
-  g=$((g-1))
   for i in $(seq 1 $WORKERS ); do
-    TASK_IDX=$((g*WORKERS+i-1))
-    $CMD -e NVIDIA_VISIBLE_DEVICES=$g --net="host" $USER/hogwild python Hogwild.py --job_name worker --task_index $TASK_IDX --gpu_index $g $STATIC_ARGS
+    TASK_IDX=$(((g-1)*WORKERS+i-1))
+    WORKER="$CMD --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=$((g-1)) --net="host" --name=worker$TASK_IDX $USER/hogwild:gpu --job_name worker --task_index $TASK_IDX $STATIC_ARGS"
+    echo $WORKER
+    HASHES+=$($WORKER)" "
   done
 done
+echo $HASHES

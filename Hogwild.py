@@ -34,13 +34,17 @@ class _LoggerHook(tf.train.SessionRunHook):
       examples_per_sec = step * FLAGS.batch_size / duration
       sec_per_batch = duration / step
 
-      format_str = "Step {}: {:0.1f} examples/sec; {:0.4f} sec/batch"
-      print(format_str.format(step, examples_per_sec, sec_per_batch))
+      format_str = "Step {}: {:0.1f} examples/sec; {:0.4f} sec/batch\n"
+      self.save(format_str.format(step, examples_per_sec, sec_per_batch))
+
+  def save(self, string):
+    with open('/workspace/out.txt', 'a') as f:
+      f.write(string)    
 
   def end(self, session):
       if FLAGS.job_name == 'worker' and FLAGS.task_index == 0:
         total_time = time.time() - self._start_time
-        print("Training complete, total time {:0.3f} s".format(total_time))
+        self.save("Training complete, total time {:0.3f} s\n".format(total_time))
 
 
 class _ProfilerHook(tf.train.ProfilerHook):
@@ -189,19 +193,12 @@ if __name__ == '__main__':
   parser.add_argument(
     "--num_tasks",
     type=int,
-    default=2,
     help="Number of non chief tasks")
-
-  parser.add_argument(
-    "--gpu_index",
-    type=int,
-    help="Index of gpu in distribution")
 
   parser.add_argument(
     "--num_gpus",
     type=int,
-    default=1,
-    help="number of gpus distributed over")
+    help="Number of GPUs to distribute training over")
 
   # Flags for defining model properties
   parser.add_argument(
@@ -264,13 +261,10 @@ if __name__ == '__main__':
   if FLAGS.dense_size < 30:
     FLAGS.dense_size = 1 << FLAGS.dense_size
 
-  FLAGS.task_index = FLAGS.gpu_index*FLAGS.num_tasks + FLAGS.task_index
-  FLAGS.num_tasks = FLAGS.num_gpus*FLAGS.num_tasks
-
   cluster = {
     'ps': ['localhost: 2221'],
-    'chief': ['localhost:2222'],
-    'worker': ['localhost:{}'.format(i+2223) for i in range(FLAGS.num_tasks)]
+    'chief': ['localhost:{}'.format(i+2222) for i in range(1)],
+    'worker': ['localhost:{}'.format(i+2222+1) for i in range(FLAGS.num_tasks)]
   }
   os.environ['TF_CONFIG'] = json.dumps(
     {'cluster': cluster,
