@@ -5,15 +5,16 @@ WORKERS=1
 NUM_GPUS=1
 MODEL_DIR=""
 PROFILE_DIR=""
+LOG_DIR=""
 INVERT_PS_DEVICE=false
 
-SHORT_OPTS="b:w:e:d:f:m:n:s:o:p:g:ih"
-LONG_OPTS="batch_size:,workers:,steps:,hidden_sizes:,log_frequency:,min_nnz:,max_nnz:,dense_size:,model_dir:,profile_dir:,num_gpus:,invert_ps_device,help"
+SHORT_OPTS="b:w:e:d:f:m:n:s:o:p:l:g:ih"
+LONG_OPTS="batch_size:,workers:,steps:,hidden_sizes:,log_frequency:,min_nnz:,max_nnz:,dense_size:,model_dir:,profile_dir:,log_dir:,num_gpus:,invert_ps_device,help"
 OPTS=`getopt -o $SHORT_OPTS --long $LONG_OPTS -n 'parse-options' -- "$@"`
 if [ $? != 0 ] ; then echo "Failed parsing options." >&2 ; exit 1 ; fi
 eval set -- "$OPTS"
 
-STATIC_ARGS=""
+STATIC_ARGS="--model_dir /tmp/models --log_dir /tmp/logs/"
 while true; do
   case "$1" in
     -b | --batch_size       ) STATIC_ARGS+="--batch_size $2 "; shift; shift ;;
@@ -25,7 +26,8 @@ while true; do
     -n | --max_nnz          ) STATIC_ARGS+="--max_nnz $2 "; shift; shift ;;
     -s | --dense_size       ) STATIC_ARGS+="--dense_size $2 "; shift; shift ;;
     -o | --model_dir        ) MODEL_DIR=$2; shift; shift ;;
-    -p | --profile_dir      ) PROFILE_DIR=$2; STATIC_ARGS+="--profile_dir /profile/ "; shift; shift ;;
+    -p | --profile_dir      ) PROFILE_DIR=$2; STATIC_ARGS+="--profile_dir /tmp/profile/ "; shift; shift ;;
+    -l | --log_dir          ) LOG_DIR=$2; shift; shift ;;
     -g | --num_gpus         ) NUM_GPUS=$2; shift; shift ;;
     -i | --invert_ps_device ) INVERT_PS_DEVICE=true; shift ;;
     -h | --help             ) HELP=true; shift ;;
@@ -48,13 +50,14 @@ if [ "$HELP" = true ]; then
   echo "    --dense_size, -s       : full dimensionality of sparse input space. If set to less than 30, size will be 1 << dense_size"
   echo "    --model_dir, -o        : where to log model checkpoints. Must be specified so containers can refer to same checkpoints"
   echo "    --profile_dir, -p      : where to store timeline profiles. Saved with the same frequency as log frequency"
+  echo "    --log_dir, -l          : where to save print logging"
   echo "    --num_gpus, -g         : number of gpus to distribute over"
   echo "    --invert_ps_device, -i : if using one GPU, host parameter server on CPU. If using multiple GPUs, hosts parameter server on GPU 0"
   echo "    --help, -h             : show this help"
   exit 0
 fi
 
-STATIC_ARGS+="--num_tasks $((WORKERS*NUM_GPUS)) --model_dir /tmp/models"
+STATIC_ARGS+="--num_tasks $((WORKERS*NUM_GPUS))"
 
 # utility function for creating the necessary volume mounts for model checkpointing and profiling
 check_dir (){
@@ -84,14 +87,11 @@ check_dir (){
 }
 
 # build the base command
-CMD="docker run --rm -d -u $(id -u):$(id -g)"
+# TODO: add log_dir to cla
+CMD="docker run --rm -d -u $(id -u):$(id -g) -v $(pwd):/workspace/"
 CMD+=$(check_dir $MODEL_DIR /tmp/models)
-CMD+=$(check_dir $PROFILE_DIR /profile)
-
-# stdout gets sent to a local file called out.txt
-# TODO: make this a command line arg?
-CMD+=" -v $(pwd):/workspace/"
-rm out.txt
+CMD+=$(check_dir $PROFILE_DIR /tmp/profile)
+CMD+=$(check_dir $LOG_DIR /tmp/logs)
 
 # decide whether to run ps & chief on CPU or GPU
 HEAD_ARGS="$USER/hogwild:cpu"
@@ -120,9 +120,11 @@ for g in $(seq 1 $NUM_GPUS); do
 done
 echo $HASHES
 
-while [[ "$(docker ps -q -f name=worker* | wc -l)" -gt 0 ]]; do
-  sleep 1
+while ! [[ -z "$(docker ps -q -f name=chief)" ]]; do
+  docker logs -f --until=1s chief
 done
 
-docker kill ps chief
-cat out.txt
+docker kill ps $(docker ps -q -f name=worker*)
+if ! [[ -z "$LOG_DIR" ]]; then
+  cat $LOG_DIR/log
+fi

@@ -11,6 +11,7 @@ class _LoggerHook(tf.train.SessionRunHook):
   """Logs loss and runtime."""
   def __init__(self, log_frequency):
     self.log_frequency = log_frequency
+    self.fname = '/tmp/logs/log'
     super(_LoggerHook, self).__init__()
 
   def begin(self):
@@ -33,7 +34,7 @@ class _LoggerHook(tf.train.SessionRunHook):
       self.save(format_str.format(step, examples_per_sec, sec_per_batch))
 
   def save(self, string):
-    with open('/workspace/out.txt', 'a') as f:
+    with open(self.fname, 'a') as f:
       f.write(string)    
 
   def end(self, session):
@@ -107,7 +108,8 @@ def main():
   config = tf.estimator.RunConfig(
     model_dir=FLAGS.model_dir,
     session_config=session_config,
-    save_checkpoints_steps=100)    
+    save_checkpoints_steps=None,
+    save_checkpoints_secs=None)    
 
   columns = [
     tf.feature_column.numeric_column('batch_idx', dtype=tf.int32),
