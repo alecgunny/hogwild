@@ -13,7 +13,7 @@ for d in "${DENSE_SIZES[@]}"; do
         for g in "${GPUS[@]}"; do
           RUN_DIR="outputs/dense-${d}_batch-${b}_workers-${w}_hidden-${h}_gpus-${g}"
           CMD="./run.sh --profile_dir $RUN_DIR/profile --log_dir $RUN_DIR/logs --dense_size ${d} --batch_size ${b} --workers ${w} --hidden_sizes ${h} --num_gpus ${g} --steps 1000000 --log_frequency 100000"
-          if [[ "$NUM_GPUS" = 1 ]]; then
+          if [[ "$g" = 1 ]]; then
             CMD+=" -i"
           fi
           echo $CMD
