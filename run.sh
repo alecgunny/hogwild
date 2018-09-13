@@ -37,7 +37,7 @@ while true; do
 done
 
 if [ "$HELP" = true ]; then
-  echo "Asychronously train multiple copies of a mulitlayer percepton on random data gpus"
+  echo "Asychronously train multiple copies of a mulitlayer percepton on random data. Distributes over multiple copies on multiple GPUs"
   echo "Parameters"
   echo "----------"
   echo "    --batch_size, -b       : batch size of a single gradient step"
@@ -48,7 +48,7 @@ if [ "$HELP" = true ]; then
   echo "    --min_nnz, -m          : minimum number of nonzero elements in a sample of random data"
   echo "    --max_nnz, -n          : maximum number of nonzero elements in a sample of random data"
   echo "    --dense_size, -s       : full dimensionality of sparse input space. If set to less than 30, size will be 1 << dense_size"
-  echo "    --model_dir, -o        : where to log model checkpoints. Must be specified so containers can refer to same checkpoints"
+  echo "    --model_dir, -o        : where to log model checkpoints. Must be specified so containers can refer to same checkpoints. Note that it should be empty or TF will complain"
   echo "    --profile_dir, -p      : where to store timeline profiles. Saved with the same frequency as log frequency"
   echo "    --log_dir, -l          : where to save print logging"
   echo "    --num_gpus, -g         : number of gpus to distribute over"
@@ -66,19 +66,11 @@ check_dir (){
 
   # check if host directory is empty. Note that this would make "$CONTAINER_DIR" $1
   if ! [[ -z "$CONTAINER_DIR" ]]; then
-    # clear it if it exists and has content, otherwise create it
-    if [[ -d "$HOST_DIR" ]]; then
-      if ! [[ -z "$(ls -A $HOST_DIR)" ]]; then
-        rm -r $HOST_DIR/*
-      fi
-    else
-      mkdir -p $HOST_DIR
-    fi
+    # create it if it doesn't exitst.
+    if ! [[ -d "$HOST_DIR" ]]; then mkdir -p $HOST_DIR; fi
 
     # if it's a relative path, append it to the pwd
-    if [[ ! "$HOST_DIR" = /* ]]; then
-      HOST_DIR=$(pwd)/$HOST_DIR
-    fi
+    if [[ ! "$HOST_DIR" = /* ]]; then HOST_DIR=$(pwd)/$HOST_DIR; fi
 
     echo " -v $HOST_DIR:$CONTAINER_DIR"
   else
@@ -121,7 +113,7 @@ done
 echo $HASHES
 
 while ! [[ -z "$(docker ps -q -f name=chief)" ]]; do
-  docker logs -f --until=1s chief
+  sleep 1
 done
 
 docker kill ps $(docker ps -q -f name=worker*)
