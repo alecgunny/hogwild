@@ -92,6 +92,7 @@ if [[ "$NUM_GPUS" -gt 1 && "$INVERT_PS_DEVICE" = "true" ]] || [[ "$NUM_GPUS" -eq
 fi  
 
 # initialize chief node and parameter server
+docker kill ps chief $(docker ps -q -f name=worker*)
 HASHES=""
 CHIEF="$CMD --net="host" --name=chief $HEAD_ARGS --job_name chief --task_index 0 $STATIC_ARGS"
 echo $CHIEF

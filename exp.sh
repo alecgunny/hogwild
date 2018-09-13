@@ -12,12 +12,14 @@ for d in "${DENSE_SIZES[@]}"; do
       for h in "${HIDDEN_SIZES[@]}"; do
         for g in "${GPUS[@]}"; do
           RUN_DIR="outputs/dense-${d}_batch-${b}_workers-${w}_hidden-${h}_gpus-${g}"
-          CMD="./run.sh --profile_dir $RUN_DIR/profile --log_dir $RUN_DIR/logs --dense_size ${d} --batch_size ${b} --workers ${w} --hidden_sizes ${h} --num_gpus ${g} --steps 100000 --log_frequency 10000"
-          if [[ "$g" = 1 ]]; then
-            CMD+=" -i"
+          if ! [[ -d "$RUN_DIR" ]]; then 
+            CMD="./run.sh --profile_dir $RUN_DIR/profile --log_dir $RUN_DIR/logs --dense_size ${d} --batch_size ${b} --workers ${w} --hidden_sizes ${h} --num_gpus ${g} --steps 100000 --log_frequency 10000"
+            if [[ "$g" = 1 ]]; then
+              CMD+=" -i"
+            fi
+            echo $CMD
+            $CMD
           fi
-          echo $CMD
-          $CMD
         done
       done
     done
