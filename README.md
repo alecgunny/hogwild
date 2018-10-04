@@ -4,18 +4,6 @@ Inputs to the estimator are 4 dimensional, with the first two columns indexing t
 
 Worth noting that worker instances take some time to spin up (4-5 s per instance), so to get a good benchmark of the speedup it's best to run for tens of thousands of gradient steps so that all workers can get online before training finishes.
 
-To build, just use `docker build -t $USER/hogwild .`, which builds an executable Docker image which can take command line args at run time. To see all args, run
+Nothing to build, just uses public tensorflow docker releases (doesn't leverage NGC to make agnosticism to CPU/GPU implementation simpler). All that's needed is to run `./run.sh -h` to get a sense for command line options. All profiling, logging, and model saving are done inside the container unless a local directory is specified in the `./run.sh` call.
 
-`nvidia-docker run --rm -it $USER/hogwild -h`
-
-An example command to run would be
-
-`docker run --rm -it --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=0 $USER/hogwild --batch_size 512 --steps 4000 --hidden_dims 128,1024,1024,512 --dense_size 2000000 --max_nnz 100 --log_frequency 200 --workers 4`
-
-If you want to save the model checkpoints, just volume map a directory into the container and set the `--model_dir` flag
-
-```
-NAME=foo
-mkdir -p logs/$NAME 
-docker run --rm -it --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=0 -v $(pwd)/logs/$NAME:/logs $USER/hogwild --model_dir /logs
-```
+Right now GPU offers very little acceleration when compared to a CPU implementation with the same number of worker threads. Basic profiling suggests that this is due to the fact that the mem copy from CPU to GPU washes out the drastically improved speed of the embedding lookup on GPU. It's possible for very deep and wide networks at large batches GPU advantage could start to grow, but larger batches can also have a detrimental effect on convergence speed for asynchronous training. More investigation into this is required.
