@@ -33,29 +33,30 @@ MODEL_DIR=""
 PROFILE_DIR=""
 LOG_DIR=""
 INVERT_PS_DEVICE=false
+TAG=latest-gpu
 
-SHORT_OPTS="b:w:e:d:f:m:n:s:o:p:l:g:ih"
-LONG_OPTS="batch_size:,workers:,steps:,hidden_sizes:,log_frequency:,min_nnz:,max_nnz:,dense_size:,model_dir:,profile_dir:,log_dir:,num_gpus:,invert_ps_device,help"
+SHORT_OPTS="b:w:e:d:f:m:n:s:o:p:l:g:ch"
+LONG_OPTS="batch_size:,workers:,steps:,hidden_sizes:,log_frequency:,min_nnz:,max_nnz:,dense_size:,model_dir:,profile_dir:,log_dir:,num_gpus:,cpu,help"
 OPTS=`getopt -o $SHORT_OPTS --long $LONG_OPTS -n 'parse-options' -- "$@"`
 if [ $? != 0 ] ; then echo "Failed parsing options." >&2 ; exit 1 ; fi
 eval set -- "$OPTS"
 
-STATIC_ARGS="--model_dir /tmp/models --log_dir /tmp/logs/"
+PYTHON_ARGS=""
 while true; do
   case "$1" in
-    -b | --batch_size       ) STATIC_ARGS+="--batch_size $2 "; shift; shift ;;
+    -b | --batch_size       ) PYTHON_ARGS+="--batch_size $2 "; shift; shift ;;
     -w | --workers          ) WORKERS=$2; shift; shift ;;
-    -e | --steps            ) STATIC_ARGS+="--steps $2 "; shift; shift ;;
-    -d | --hidden_sizes     ) STATIC_ARGS+="--hidden_sizes ${2//,/ } "; shift; shift ;;
-    -f | --log_frequency    ) STATIC_ARGS+="--log_frequency $2 "; shift; shift ;;
-    -m | --min_nnz          ) STATIC_ARGS+="--min_nnz $2 "; shift; shift ;;
-    -n | --max_nnz          ) STATIC_ARGS+="--max_nnz $2 "; shift; shift ;;
-    -s | --dense_size       ) STATIC_ARGS+="--dense_size $2 "; shift; shift ;;
-    -o | --model_dir        ) MODEL_DIR=$2; shift; shift ;;
-    -p | --profile_dir      ) PROFILE_DIR=$2; STATIC_ARGS+="--profile_dir /tmp/profile/ "; shift; shift ;;
-    -l | --log_dir          ) LOG_DIR=$2; shift; shift ;;
+    -e | --steps            ) PYTHON_ARGS+="--steps $2 "; shift; shift ;;
+    -d | --hidden_sizes     ) PYTHON_ARGS+="--hidden_sizes ${2//,/ } "; shift; shift ;;
+    -f | --log_frequency    ) PYTHON_ARGS+="--log_frequency $2 "; shift; shift ;;
+    -m | --min_nnz          ) PYTHON_ARGS+="--min_nnz $2 "; shift; shift ;;
+    -n | --max_nnz          ) PYTHON_ARGS+="--max_nnz $2 "; shift; shift ;;
+    -s | --dense_size       ) PYTHON_ARGS+="--dense_size $2 "; shift; shift ;;
+    -o | --model_dir        ) MODEL_DIR=$2; PYTHON_ARGS+="--model_dir /tmp/model/ "; shift; shift ;;
+    -p | --profile_dir      ) PROFILE_DIR=$2; PYTHON_ARGS+="--profile_dir /tmp/profile/ "; shift; shift ;;
+    -l | --log_dir          ) LOG_DIR=$2; PYTHON_ARGS+="--log_dir /tmp/log/ "; shift; shift ;;
     -g | --num_gpus         ) NUM_GPUS=$2; shift; shift ;;
-    -i | --invert_ps_device ) INVERT_PS_DEVICE=true; shift ;;
+    -c | --cpu              ) TAG=latest; shift;;
     -h | --help             ) HELP=true; shift ;;
     -- ) shift; break ;;
     * ) break ;;
@@ -78,12 +79,12 @@ if [ "$HELP" = true ]; then
   echo "    --profile_dir, -p      : where to store timeline profiles. Saved with the same frequency as log frequency"
   echo "    --log_dir, -l          : where to save print logging"
   echo "    --num_gpus, -g         : number of gpus to distribute over"
-  echo "    --invert_ps_device, -i : if using one GPU, host parameter server on CPU. If using multiple GPUs, hosts parameter server on GPU 0"
+  echo "    --cpu, -c              : run workers on cpu"
   echo "    --help, -h             : show this help"
   exit 0
 fi
 
-STATIC_ARGS+="--num_tasks $((WORKERS*NUM_GPUS))"
+PYTHON_ARGS+="--num_tasks $((WORKERS*NUM_GPUS))"
 
 # utility function for creating the necessary volume mounts for model checkpointing and profiling
 check_dir (){
@@ -105,26 +106,20 @@ check_dir (){
 }
 
 # build the base command
-# TODO: add log_dir to cla
-CMD="docker run --rm -d -u $(id -u):$(id -g) -v $(pwd):/workspace/"
-CMD+=$(check_dir $MODEL_DIR /tmp/models)
-CMD+=$(check_dir $PROFILE_DIR /tmp/profile)
-CMD+=$(check_dir $LOG_DIR /tmp/logs)
+DOCKER_CMD="docker run --rm -d -u $(id -u):$(id -g) -v $PWD:/workspace/ --workdir /workspace --net=host"
 
-# decide whether to run ps & chief on CPU or GPU
-HEAD_ARGS="$USER/hogwild:cpu"
-if [[ "$NUM_GPUS" -gt 1 && "$INVERT_PS_DEVICE" = "true" ]] || [[ "$NUM_GPUS" -eq 1 && ! "$INVERT_PS_DEVICE" = "true"  ]]; then
-  HEAD_ARGS="--runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=0 $USER/hogwild:gpu"
-fi  
+# add volume mounts for saving data out from container
+DOCKER_CMD+=$(check_dir $MODEL_DIR /tmp/model)
+DOCKER_CMD+=$(check_dir $PROFILE_DIR /tmp/profile)
+DOCKER_CMD+=$(check_dir $LOG_DIR /tmp/log)
 
 # initialize chief node and parameter server
-docker kill ps chief $(docker ps -q -f name=worker*)
 HASHES=""
-CHIEF="$CMD --net="host" --name=chief $HEAD_ARGS --job_name chief --task_index 0 $STATIC_ARGS"
+CHIEF="$DOCKER_CMD --name=chief tensorflow/tensorflow python Hogwild.py --job_name chief --task_index 0 $PYTHON_ARGS"
 echo $CHIEF
 HASHES+=$($CHIEF)" "
 
-PS="$CMD --net="host" --name=ps $HEAD_ARGS --job_name ps --task_index 0 $STATIC_ARGS"
+PS="$DOCKER_CMD --name=ps tensorflow/tensorflow  python Hogwild.py --job_name ps --task_index 0 $PYTHON_ARGS"
 echo $PS
 HASHES+=$($PS)" "
 
@@ -132,9 +127,13 @@ HASHES+=$($PS)" "
 for g in $(seq 1 $NUM_GPUS); do
   for i in $(seq 1 $WORKERS ); do
     TASK_IDX=$(((g-1)*WORKERS+i-1))
-    WORKER="$CMD --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=$((g-1)) --net="host" --name=worker$TASK_IDX $USER/hogwild:gpu --job_name worker --task_index $TASK_IDX $STATIC_ARGS"
-    echo $WORKER
-    HASHES+=$($WORKER)" "
+    WORKER_CMD=$DOCKER_CMD
+    if [[ "$TAG" == "latest-gpu" ]]; then
+      WORKER_CMD+=" --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=$((g-1))"
+    fi
+    WORKER_CMD+=" --name=worker$TASK_IDX tensorflow/tensorflow:$TAG python Hogwild.py --job_name worker --task_index $TASK_IDX $PYTHON_ARGS"
+    echo $WORKER_CMD
+    HASHES+=$($WORKER_CMD)" "
   done
 done
 echo $HASHES

@@ -25,24 +25,30 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import tensorflow as tf
-from tensorflow.python.estimator.training import _DELAY_SECS_PER_WORKER, _MAX_DELAY_SECS
+#from tensorflow.python.estimator.training import _DELAY_SECS_PER_WORKER, _MAX_DELAY_SECS
+from tensorflow.python import estimator
+estimator.training._DELAY_SECS_PER_WORKER = 0
 import argparse
 import time
 import os
 import json
 import numpy as np
 
-
 class _LoggerHook(tf.train.SessionRunHook):
   """Logs loss and runtime."""
   def __init__(self, log_frequency):
     self.log_frequency = log_frequency
-    self.fname = '/tmp/logs/log'
+    if FLAGS.log_dir is not None:
+      self.fname = os.path.join(FLAGS.log_dir, 'log')
+    else:
+      self.fname = '/tmp/log'
     super(_LoggerHook, self).__init__()
 
   def begin(self):
     self._start_time = time.time()
-    self._start_time -= min(_DELAY_SECS_PER_WORKER*FLAGS.task_index, _MAX_DELAY_SECS)
+    self._start_time -= min(
+      estimator.training._DELAY_SECS_PER_WORKER*FLAGS.task_index,
+      estimator.training._MAX_DELAY_SECS)
 
   def before_run(self, run_context):
     return tf.train.SessionRunArgs(tf.train.get_global_step())
@@ -134,7 +140,7 @@ def main():
   config = tf.estimator.RunConfig(
     model_dir=FLAGS.model_dir,
     session_config=session_config,
-    save_checkpoints_steps=None,
+    save_checkpoints_steps=FLAGS.log_frequency if FLAGS.model_dir is not None else None,
     save_checkpoints_secs=None)    
 
   columns = [
@@ -175,10 +181,12 @@ def main():
   def train_input_fn():
     dtypes = ({col.name: col.dtype for col in columns}, tf.int32)
     dataset = tf.data.Dataset.from_generator(train_input_gen, dtypes)
+    dataset = tf.data.Dataset.apply(dataset, tf.contrib.data.prefetch_to_device('/device:GPU:0'))
     return dataset.make_one_shot_iterator().get_next()
 
   train_hooks = [_LoggerHook(FLAGS.log_frequency)]
-  if FLAGS.profile_dir is not None:
+  if FLAGS.profile_dir is not None and FLAGS.job_name=='worker':
+    print('Profiling at {}'.format(FLAGS.profile_dir))
     train_hooks.append(tf.train.ProfilerHook(
       save_steps=FLAGS.log_frequency,
       output_dir=FLAGS.profile_dir,
@@ -209,6 +217,7 @@ if __name__ == '__main__':
   parser.add_argument(
     "--num_tasks",
     type=int,
+    default=1,
     help="Number of worker tasks")
 
   # Flags for defining model properties
@@ -242,6 +251,12 @@ if __name__ == '__main__':
     type=int,
     default=100,
     help="number of steps between print logging")
+
+  parser.add_argument(
+    "--log_dir",
+    type=str,
+    default=None,
+    help="Where to save print log")
 
   parser.add_argument(
     "--profile_dir",
