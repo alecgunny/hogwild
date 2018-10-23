@@ -115,7 +115,7 @@ DOCKER_CMD+=$(check_dir $LOG_DIR /tmp/log)
 
 # initialize chief node and parameter server
 HASHES=""
-CHIEF="$DOCKER_CMD --name=chief tensorflow/tensorflow python Hogwild.py --job_name chief --task_index 0 $PYTHON_ARGS"
+CHIEF+="$DOCKER_CMD --name=chief tensorflow/tensorflow python Hogwild.py --job_name chief --task_index 0 $PYTHON_ARGS"
 echo $CHIEF
 HASHES+=$($CHIEF)" "
 

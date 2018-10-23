@@ -181,7 +181,6 @@ def main():
   def train_input_fn():
     dtypes = ({col.name: col.dtype for col in columns}, tf.int32)
     dataset = tf.data.Dataset.from_generator(train_input_gen, dtypes)
-    dataset = tf.data.Dataset.apply(dataset, tf.contrib.data.prefetch_to_device('/device:GPU:0'))
     return dataset.make_one_shot_iterator().get_next()
 
   train_hooks = [_LoggerHook(FLAGS.log_frequency)]
