@@ -34,6 +34,8 @@ import os
 import json
 import numpy as np
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
+
 class _LoggerHook(tf.train.SessionRunHook):
   """Logs loss and runtime."""
   def __init__(self, log_frequency):
@@ -141,7 +143,7 @@ def main():
     model_dir=FLAGS.model_dir,
     session_config=session_config,
     save_checkpoints_steps=FLAGS.log_frequency if FLAGS.model_dir is not None else None,
-    save_checkpoints_secs=None)    
+    save_checkpoints_secs=None)
 
   columns = [
     tf.feature_column.numeric_column('batch_idx', dtype=tf.int32),
@@ -291,7 +293,9 @@ if __name__ == '__main__':
     'chief': ['localhost:2222'],
     'worker': ['localhost:{}'.format(i+2223) for i in range(FLAGS.num_tasks)]
   }
-  os.environ['TF_CONFIG'] = json.dumps(
+  os.environ['TF_CONFIG'] =  json.dumps(
     {'cluster': cluster,
      'task': {'type': FLAGS.job_name, 'index': FLAGS.task_index}})
+
+  print(os.environ['TF_CONFIG'])
   main()
