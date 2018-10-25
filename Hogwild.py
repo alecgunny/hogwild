@@ -89,11 +89,14 @@ def model_fn(
 
     indices = tf.cast(net[:, :2], tf.int64)
     ids = tf.cast(net[:, 2], tf.int64)
-    values = net[:, 3]
 
     dense_shape = [params['batch_size'], params['max_nnz']]
     sp_ids = tf.SparseTensor(indices=indices, values=ids, dense_shape=dense_shape)
-    sp_weights = tf.SparseTensor(indices=indices, values=values, dense_shape=dense_shape)
+    if not FLAGS.binary_inputs:
+      values = net[:, 3]
+      sp_weights = tf.SparseTensor(indices=indices, values=values, dense_shape=dense_shape)
+    else:
+      sp_weights = None
 
     net = tf.nn.embedding_lookup_sparse(
       embedding_matrix,
@@ -147,9 +150,10 @@ def main():
 
   columns = [
     tf.feature_column.numeric_column('batch_idx', dtype=tf.int32),
-    tf.feature_column.numeric_column('idx_row', dtype=tf.int32),
-    tf.feature_column.numeric_column('embedding_row', dtype=tf.int32),
-    tf.feature_column.numeric_column('value', dtype=tf.float32)]
+    tf.feature_column.numeric_column('idx_nz_col', dtype=tf.int32),
+    tf.feature_column.numeric_column('inp_nz_col', dtype=tf.int32)]
+  if not FLAGS.binary_inputs:
+    columns.append(tf.feature_column.numeric_column('inp_value', dtype=tf.float32))
 
   estimator_params = {
     'feature_columns': columns,
@@ -171,12 +175,12 @@ def main():
       nz_idx = [generate_idx() for _ in range(FLAGS.batch_size)]
       batch_idx = np.repeat(np.arange(FLAGS.batch_size), [len(i) for i in nz_idx])
       idx_row = [np.arange(len(idx)) for idx in nz_idx]
-      values = [np.random.uniform(5, size=len(idx)) for idx in nz_idx]
       X = {
         'batch_idx': batch_idx,
-        'idx_row': np.concatenate(idx_row),
-        'embedding_row': np.concatenate(nz_idx),
-        'value': np.concatenate(values)}
+        'idx_nz_col': np.concatenate(idx_row),
+        'inp_nz_col': np.concatenate(nz_idx)}
+      if not FLAGS.binary_inputs:
+        X['inp_value'] = np.concatenate([np.random.uniform(5, size=len(idx)) for idx in nz_idx])
       y = np.random.randint(n_classes, size=FLAGS.batch_size)
       yield X, y
 
@@ -195,7 +199,7 @@ def main():
       show_memory=True))
 
   train_spec = tf.estimator.TrainSpec(input_fn=train_input_fn, max_steps=FLAGS.steps, hooks=train_hooks)
-  eval_spec = tf.estimator.EvalSpec(input_fn=train_input_fn)
+  eval_spec = tf.estimator.EvalSpec(input_fn=train_input_fn, steps=1, start_delay_secs=500)
   tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
 
 if __name__ == '__main__':
@@ -216,7 +220,7 @@ if __name__ == '__main__':
     help="Index of task within the job")
 
   parser.add_argument(
-    "--num_tasks",
+    "--num_workers",
     type=int,
     default=1,
     help="Number of worker tasks")
@@ -284,16 +288,22 @@ if __name__ == '__main__':
     default=10,
     help="minimum number of nonzero elements in a sample")
 
+  parser.add_argument(
+    "--binary_inputs",
+    action="store_true",
+    help="whether inputs are binary. Can help keep gradients sparse")
+
   FLAGS, unparsed = parser.parse_known_args()
   if FLAGS.dense_size < 30:
     FLAGS.dense_size = 1 << FLAGS.dense_size
 
-  cluster = {
-    'ps': ['localhost: 2221'],
-    'chief': ['localhost:2222'],
-    'worker': ['localhost:{}'.format(i+2223) for i in range(FLAGS.num_tasks)]
-  }
-  os.environ['TF_CONFIG'] =  json.dumps(
-    {'cluster': cluster,
-     'task': {'type': FLAGS.job_name, 'index': FLAGS.task_index}})
+  if FLAGS.num_workers > 1:
+    cluster = {
+      'ps': ['localhost: 2221'],
+      'chief': ['localhost:2222'],
+      'worker': ['localhost:{}'.format(i+2223) for i in range(FLAGS.num_workers)]
+    }
+    os.environ['TF_CONFIG'] =  json.dumps(
+      {'cluster': cluster,
+        'task': {'type': FLAGS.job_name, 'index': FLAGS.task_index}})
   main()

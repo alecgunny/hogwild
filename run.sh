@@ -35,8 +35,8 @@ LOG_DIR=""
 INVERT_PS_DEVICE=false
 TAG=latest-gpu
 
-SHORT_OPTS="b:w:e:d:f:m:n:s:o:p:l:g:ch"
-LONG_OPTS="batch_size:,workers:,steps:,hidden_sizes:,log_frequency:,min_nnz:,max_nnz:,dense_size:,model_dir:,profile_dir:,log_dir:,num_gpus:,cpu,help"
+SHORT_OPTS="b:w:e:d:f:m:n:s:o:p:l:g:cxh"
+LONG_OPTS="batch_size:,workers:,steps:,hidden_sizes:,log_frequency:,min_nnz:,max_nnz:,dense_size:,model_dir:,profile_dir:,log_dir:,num_gpus:,cpu,binary_inputs,help"
 OPTS=`getopt -o $SHORT_OPTS --long $LONG_OPTS -n 'parse-options' -- "$@"`
 if [ $? != 0 ] ; then echo "Failed parsing options." >&2 ; exit 1 ; fi
 eval set -- "$OPTS"
@@ -57,6 +57,7 @@ while true; do
     -l | --log_dir          ) LOG_DIR=$2; PYTHON_ARGS+="--log_dir /tmp/log/ "; shift; shift ;;
     -g | --num_gpus         ) NUM_GPUS=$2; shift; shift ;;
     -c | --cpu              ) TAG=latest; shift;;
+    -x | --binary_inputs    ) PYTHON_ARGS+="--binary_inputs "; shift ;;
     -h | --help             ) HELP=true; shift ;;
     -- ) shift; break ;;
     * ) break ;;
@@ -80,11 +81,12 @@ if [ "$HELP" = true ]; then
   echo "    --log_dir, -l          : where to save print logging"
   echo "    --num_gpus, -g         : number of gpus to distribute over"
   echo "    --cpu, -c              : run workers on cpu"
+  echo "    --binary_inputs, -x    : whether inputs only take on values 0 or 1. If true, can help keep gradients sparse"
   echo "    --help, -h             : show this help"
   exit 0
 fi
 
-PYTHON_ARGS+="--num_tasks $((WORKERS*NUM_GPUS))"
+PYTHON_ARGS+="--num_workers $((WORKERS*NUM_GPUS))"
 
 # utility function for creating the necessary volume mounts for model checkpointing and profiling
 check_dir (){
