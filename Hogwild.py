@@ -296,6 +296,4 @@ if __name__ == '__main__':
   os.environ['TF_CONFIG'] =  json.dumps(
     {'cluster': cluster,
      'task': {'type': FLAGS.job_name, 'index': FLAGS.task_index}})
-
-  print(os.environ['TF_CONFIG'])
   main()

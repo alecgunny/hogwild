@@ -106,7 +106,7 @@ check_dir (){
 }
 
 # build the base command
-DOCKER_CMD="docker run --rm -u $(id -u):$(id -g) -v $PWD:/workspace/ --workdir /workspace --net=host"
+DOCKER_CMD="docker run --rm -d -u $(id -u):$(id -g) -v $PWD:/workspace/ --workdir /workspace --net=host"
 
 # add volume mounts for saving data out from container
 DOCKER_CMD+=$(check_dir $MODEL_DIR /tmp/model)
@@ -115,11 +115,11 @@ DOCKER_CMD+=$(check_dir $LOG_DIR /tmp/log)
 
 # initialize chief node and parameter server
 HASHES=""
-CHIEF+="$DOCKER_CMD -d --name=chief tensorflow/tensorflow python Hogwild.py --job_name chief --task_index 0 $PYTHON_ARGS"
+CHIEF+="$DOCKER_CMD --name=chief tensorflow/tensorflow python Hogwild.py --job_name chief --task_index 0 $PYTHON_ARGS"
 echo $CHIEF
 HASHES+=$($CHIEF)" "
 
-PS="$DOCKER_CMD -d --name=ps tensorflow/tensorflow  python Hogwild.py --job_name ps --task_index 0 $PYTHON_ARGS"
+PS="$DOCKER_CMD --name=ps tensorflow/tensorflow  python Hogwild.py --job_name ps --task_index 0 $PYTHON_ARGS"
 echo $PS
 HASHES+=$($PS)" "
 
