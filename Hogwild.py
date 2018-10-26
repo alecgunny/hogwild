@@ -82,22 +82,15 @@ def model_fn(
     labels,
     mode,
     params):
-  net = tf.feature_column.input_layer(features, params['feature_columns'])
+  sp_ids = features['nz_idx']
+  if not FLAGS.binary_inputs:
+    sp_weights = features['nz_values']
+  else:
+    sp_ids = None
+
   with tf.variable_scope('embedding') as embedding_scope:
     embedding_dim = params['hidden_units'].pop(0)
     embedding_matrix = tf.get_variable('embedding_matrix', shape=(params['dense_size'], embedding_dim))
-
-    indices = tf.cast(net[:, :2], tf.int64)
-    ids = tf.cast(net[:, 2], tf.int64)
-
-    dense_shape = [params['batch_size'], params['max_nnz']]
-    sp_ids = tf.SparseTensor(indices=indices, values=ids, dense_shape=dense_shape)
-    if not FLAGS.binary_inputs:
-      values = net[:, 3]
-      sp_weights = tf.SparseTensor(indices=indices, values=values, dense_shape=dense_shape)
-    else:
-      sp_weights = None
-
     net = tf.nn.embedding_lookup_sparse(
       embedding_matrix,
       sp_ids=sp_ids,
@@ -138,6 +131,7 @@ def model_fn(
 
 
 def main():
+  # TODO: hardcoded
   n_classes = 10
 
   gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5, allow_growth=True)
@@ -148,15 +142,7 @@ def main():
     save_checkpoints_steps=FLAGS.log_frequency if FLAGS.model_dir is not None else None,
     save_checkpoints_secs=None)
 
-  columns = [
-    tf.feature_column.numeric_column('batch_idx', dtype=tf.int32),
-    tf.feature_column.numeric_column('idx_nz_col', dtype=tf.int32),
-    tf.feature_column.numeric_column('inp_nz_col', dtype=tf.int32)]
-  if not FLAGS.binary_inputs:
-    columns.append(tf.feature_column.numeric_column('inp_value', dtype=tf.float32))
-
   estimator_params = {
-    'feature_columns': columns,
     'max_nnz': FLAGS.max_nnz,
     'hidden_units': FLAGS.hidden_sizes,
     'batch_size': FLAGS.batch_size,
@@ -168,26 +154,22 @@ def main():
     params=estimator_params,
     config=config)
 
-  def train_input_gen():
-    generate_size = lambda: np.random.randint(FLAGS.min_nnz, FLAGS.max_nnz)
-    generate_idx = lambda : np.random.randint(estimator_params['dense_size'], size=generate_size())
-    while True:
-      nz_idx = [generate_idx() for _ in range(FLAGS.batch_size)]
-      batch_idx = np.repeat(np.arange(FLAGS.batch_size), [len(i) for i in nz_idx])
-      idx_row = [np.arange(len(idx)) for idx in nz_idx]
-      X = {
-        'batch_idx': batch_idx,
-        'idx_nz_col': np.concatenate(idx_row),
-        'inp_nz_col': np.concatenate(nz_idx)}
-      if not FLAGS.binary_inputs:
-        X['inp_value'] = np.concatenate([np.random.uniform(5, size=len(idx)) for idx in nz_idx])
-      y = np.random.randint(n_classes, size=FLAGS.batch_size)
-      yield X, y
+  def parse_batch(records):
+    features={
+      'nz_idx': tf.VarLenFeature(tf.int64),
+      'label': tf.FixedLenFeature(shape=[], dtype=tf.int64)}
+    if not FLAGS.binary_inputs:
+      features['nz_values'] = tf.VarLenFeature(tf.float32)
+    parsed = tf.parse_example(records, features)
+    label = parsed.pop('label')
+    return parsed, label
 
   def train_input_fn():
-    dtypes = ({col.name: col.dtype for col in columns}, tf.int32)
-    dataset = tf.data.Dataset.from_generator(train_input_gen, dtypes)
-    return dataset.make_one_shot_iterator().get_next()
+    dataset = tf.data.TFRecordDataset('/data/train.tfrecords')#FLAGS.dataset_path)
+    dataset = dataset.shuffle(buffer_size=5000)
+    dataset = dataset.batch(FLAGS.batch_size)
+    dataset = dataset.map(parse_batch)
+    return dataset
 
   train_hooks = [_LoggerHook(FLAGS.log_frequency)]
   if FLAGS.profile_dir is not None and FLAGS.job_name=='worker':
