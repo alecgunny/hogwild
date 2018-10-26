@@ -160,7 +160,7 @@ def main():
     return parsed, label
 
   def train_input_fn():
-    dataset = tf.data.TFRecordDataset('/data/train.tfrecords')#FLAGS.dataset_path)
+    dataset = tf.data.TFRecordDataset(FLAGS.dataset_path)
     dataset = dataset.shuffle(buffer_size=5000)
     dataset = dataset.batch(FLAGS.batch_size)
     dataset = dataset.map(parse_batch)
