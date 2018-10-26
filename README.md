@@ -13,7 +13,7 @@ In this example, we use completely random dummy data created in `make_dataset.py
 This dataset also uniformly samples nonzero entries from the input space. Feel free to implement your own example-generation function in `make_dataset.py` to implement a different distrubution.
 
 ## Binary inputs
-If your input space is fully binary, that is, all the nonzero values are 1, you can save a little bit of compute on the gradients by setting `sp_weights=None` to `tf.nn.embedding_lookup_sparse`, which will leverage a sparse gather op under the hood. To recreate this here, use the flag `--use_binary` to see the impact on performance.
+If your input space is fully binary, that is, all the nonzero values are 1, you can save a little bit of compute on the gradients by setting `sp_weights=None` in `tf.nn.embedding_lookup_sparse`, which will leverage a sparse gather op under the hood. To recreate this here, use the flag `--use_binary` to see the impact on performance.
 
 ## How to run
 Nothing to build, just uses public tensorflow docker releases (doesn't leverage NGC to make agnosticism to CPU/GPU implementation simpler). All that's needed is to run `./run.sh -h` to get a sense for command line options. All profiling, logging, and model saving are done inside the container unless a local directory is specified in the `./run.sh` call.
