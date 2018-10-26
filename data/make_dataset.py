@@ -14,15 +14,18 @@ def get_example_data():
   label = np.random.randint(FLAGS.num_classes)
   return nz_idx, nz_values, label
 
+
 def main():
   writer = tf.python_io.TFRecordWriter(FLAGS.dataset_path)
   for row in range(FLAGS.dataset_size):
     nz_idx, nz_values, label = get_example_data()
+
     example = tf.train.Example(features=tf.train.Features(feature=
       {'nz_idx': tf.train.Feature(int64_list=tf.train.Int64List(value=list(nz_idx))),
        'nz_values': tf.train.Feature(float_list=tf.train.FloatList(value=list(nz_values))),
        'label': tf.train.Feature(int64_list=tf.train.Int64List(value=[label]))
       }))
+
     writer.write(example.SerializeToString())
   writer.close()
 
@@ -31,7 +34,7 @@ if __name__ == '__main__':
   parser.add_argument(
     '--dataset_path',
     type=str,
-    default='/data/dataset.tfrecords',
+    default='train.tfrecords',
     help='path to save dataset to')
   
   parser.add_argument(
