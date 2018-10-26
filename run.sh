@@ -33,10 +33,12 @@ MODEL_DIR=""
 PROFILE_DIR=""
 LOG_DIR=""
 INVERT_PS_DEVICE=false
+DATASET_PATH="data/train.tfrecords"
 TAG=latest-gpu
+KEEP=false
 
-SHORT_OPTS="b:w:e:d:f:m:n:s:o:p:l:g:cxh"
-LONG_OPTS="batch_size:,workers:,steps:,hidden_sizes:,log_frequency:,min_nnz:,max_nnz:,dense_size:,model_dir:,profile_dir:,log_dir:,num_gpus:,cpu,binary_inputs,help"
+SHORT_OPTS="b:w:e:d:i:s:f:o:p:l:g:cxkh"
+LONG_OPTS="batch_size:,workers:,steps:,hidden_sizes:,log_frequency:,dataset_path:,dense_size:,model_dir:,profile_dir:,log_dir:,num_gpus:,cpu,binary_inputs,keep,help"
 OPTS=`getopt -o $SHORT_OPTS --long $LONG_OPTS -n 'parse-options' -- "$@"`
 if [ $? != 0 ] ; then echo "Failed parsing options." >&2 ; exit 1 ; fi
 eval set -- "$OPTS"
@@ -47,17 +49,17 @@ while true; do
     -b | --batch_size       ) PYTHON_ARGS+="--batch_size $2 "; shift; shift ;;
     -w | --workers          ) WORKERS=$2; shift; shift ;;
     -e | --steps            ) PYTHON_ARGS+="--steps $2 "; shift; shift ;;
-    -d | --hidden_sizes     ) PYTHON_ARGS+="--hidden_sizes ${2//,/ } "; shift; shift ;;
+    -d | --dataset_path     ) DATASET_PATH=$2; shift; shift ;;
+    -i | --dense_size       ) PYTHON_ARGS+="--dense_size $2 "; shift; shift ;;
+    -s | --hidden_sizes     ) PYTHON_ARGS+="--hidden_sizes ${2//,/ } "; shift; shift ;;
     -f | --log_frequency    ) PYTHON_ARGS+="--log_frequency $2 "; shift; shift ;;
-    -m | --min_nnz          ) PYTHON_ARGS+="--min_nnz $2 "; shift; shift ;;
-    -n | --max_nnz          ) PYTHON_ARGS+="--max_nnz $2 "; shift; shift ;;
-    -s | --dense_size       ) PYTHON_ARGS+="--dense_size $2 "; shift; shift ;;
     -o | --model_dir        ) MODEL_DIR=$2; PYTHON_ARGS+="--model_dir /tmp/model/ "; shift; shift ;;
     -p | --profile_dir      ) PROFILE_DIR=$2; PYTHON_ARGS+="--profile_dir /tmp/profile/ "; shift; shift ;;
     -l | --log_dir          ) LOG_DIR=$2; PYTHON_ARGS+="--log_dir /tmp/log/ "; shift; shift ;;
     -g | --num_gpus         ) NUM_GPUS=$2; shift; shift ;;
     -c | --cpu              ) TAG=latest; shift;;
     -x | --binary_inputs    ) PYTHON_ARGS+="--binary_inputs "; shift ;;
+    -k | --keep             ) KEEP=true; shift ;;
     -h | --help             ) HELP=true; shift ;;
     -- ) shift; break ;;
     * ) break ;;
@@ -71,7 +73,9 @@ if [ "$HELP" = true ]; then
   echo "    --batch_size, -b       : batch size of a single gradient step"
   echo "    --workers, -w          : number of copies of the model to train concurrently per GPU"
   echo "    --steps, -e            : total number of gradient steps. Since each worker takes a few seconds to spin up, running for more epochs can make speedups more pronounced"
-  echo "    --hidden_sizes, -d     : size of hidden layers of MLP seperated by commas (e.g. 512,512,256)"
+  echo "    --dataset_path, -d     : path to tfrecord dataset"
+  echo "    --dense_size, -i       : dimensionality of input space"
+  echo "    --hidden_sizes, -s     : size of hidden layers of MLP seperated by commas (e.g. 512,512,256)"
   echo "    --log_frequency, -f    : number of gradient updates between stdout logging"
   echo "    --min_nnz, -m          : minimum number of nonzero elements in a sample of random data"
   echo "    --max_nnz, -n          : maximum number of nonzero elements in a sample of random data"
@@ -82,6 +86,7 @@ if [ "$HELP" = true ]; then
   echo "    --num_gpus, -g         : number of gpus to distribute over"
   echo "    --cpu, -c              : run workers on cpu"
   echo "    --binary_inputs, -x    : whether inputs only take on values 0 or 1. If true, can help keep gradients sparse"
+  echo "    --keep, -k             : if flag is on, keep the model data stored in model_dir. Otherwise delete it"
   echo "    --help, -h             : show this help"
   exit 0
 fi
@@ -115,8 +120,16 @@ DOCKER_CMD+=$(check_dir $MODEL_DIR /tmp/model)
 DOCKER_CMD+=$(check_dir $PROFILE_DIR /tmp/profile)
 DOCKER_CMD+=$(check_dir $LOG_DIR /tmp/log)
 
+
+if [[ ! "$DATASET_PATH" = /* ]]; then DATASET_PATH=$PWD/$DATASET_PATH; fi
+DATASET_DIR=$(dirname "$DATASET_PATH")
+DATASET_FILE=$(basename "$DATASET_PATH")
+DOCKER_CMD+=" -v $DATASET_DIR:/data/"
+PYTHON_ARGS+=" --dataset_path /data/$DATASET_FILE"
+
 # initialize chief node and parameter server
 HASHES=""
+
 CHIEF+="$DOCKER_CMD --name=chief tensorflow/tensorflow python Hogwild.py --job_name chief --task_index 0 $PYTHON_ARGS"
 echo $CHIEF
 HASHES+=$($CHIEF)" "
@@ -137,11 +150,15 @@ for g in $( seq 0 $((NUM_GPUS-1)) ); do
 done
 echo $HASHES
 
-while ! [[ -z "$(docker ps -q -f name=chief)" ]]; do
+while ! [[ -z "$(docker ps -q -f name=worker*)" ]]; do
   sleep 1
 done
 
-docker kill ps $(docker ps -q -f name=worker*)
+docker kill ps chief
+if [[ "$KEEP" == "false" ]]; then
+  rm -r $MODEL_DIR/*
+fi
+
 if ! [[ -z "$LOG_DIR" ]]; then
   cat $LOG_DIR/log
 fi

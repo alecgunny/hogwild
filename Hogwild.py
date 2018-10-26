@@ -83,11 +83,7 @@ def model_fn(
     mode,
     params):
   sp_ids = features['nz_idx']
-  if not FLAGS.binary_inputs:
-    sp_weights = features['nz_values']
-  else:
-    sp_ids = None
-
+  sp_weights = features.get('nz_values')
   with tf.variable_scope('embedding') as embedding_scope:
     embedding_dim = params['hidden_units'].pop(0)
     embedding_matrix = tf.get_variable('embedding_matrix', shape=(params['dense_size'], embedding_dim))
@@ -143,11 +139,9 @@ def main():
     save_checkpoints_secs=None)
 
   estimator_params = {
-    'max_nnz': FLAGS.max_nnz,
+    'dense_size': FLAGS.dense_size,
     'hidden_units': FLAGS.hidden_sizes,
-    'batch_size': FLAGS.batch_size,
-    'n_classes': n_classes,
-    'dense_size': FLAGS.dense_size}
+    'n_classes': n_classes}
 
   estimator = tf.estimator.Estimator(
     model_fn=model_fn,
@@ -160,6 +154,7 @@ def main():
       'label': tf.FixedLenFeature(shape=[], dtype=tf.int64)}
     if not FLAGS.binary_inputs:
       features['nz_values'] = tf.VarLenFeature(tf.float32)
+
     parsed = tf.parse_example(records, features)
     label = parsed.pop('label')
     return parsed, label
@@ -251,31 +246,25 @@ if __name__ == '__main__':
     default=None,
     help="where to save profiler timelines")
 
-  # sparsity flags
+  # Flags for data
+  parser.add_argument(
+    "--dataset_path",
+    type=str,
+    default="/data/train.tfrecords",
+    help="path to tfrecords dataset")
+
   parser.add_argument(
     "--dense_size",
     type=int,
-    default=1<<20,
+    default=1000000,
     help="Dimensionality of input space")
-
-  parser.add_argument(
-    "--max_nnz",
-    type=int,
-    default=100,
-    help="maximum number of nonzero elements in a sample")
-
-  parser.add_argument(
-    "--min_nnz",
-    type=int,
-    default=10,
-    help="minimum number of nonzero elements in a sample")
-
+  
   parser.add_argument(
     "--binary_inputs",
     action="store_true",
-    help="whether inputs are binary. Can help keep gradients sparse")
+    help="whether to ignore nz_values and assume inputs are binary. Can help keep gradients sparse")
 
-  FLAGS, unparsed = parser.parse_known_args()
+  FLAGS = parser.parse_args()
   if FLAGS.dense_size < 30:
     FLAGS.dense_size = 1 << FLAGS.dense_size
 
@@ -288,4 +277,5 @@ if __name__ == '__main__':
     os.environ['TF_CONFIG'] =  json.dumps(
       {'cluster': cluster,
         'task': {'type': FLAGS.job_name, 'index': FLAGS.task_index}})
+  print('Got here!')
   main()
