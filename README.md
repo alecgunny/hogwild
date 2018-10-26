@@ -8,6 +8,8 @@ Also shows how to leverage sparse data with the dataset API. You can see the pro
 
 The tensor on the left corresponds to "nz_idx", with indices given by the left two columns and values given by the column beneath it, while the tensor on the right corresponds to the same format for "nz_values".
 
+Note that the "ragged" tensors in the second row are what get stored in the TFRecords dataset (each example only saves the values it needs). The values at the bottom correspond to the `.values` properties of the sparse tensors created by VarLenFeature.
+
 In this example, we use completely random dummy data created in `data/make_dataset.py`, which can be found in `data/train.tfrecords`. This dataset corresponds to 10,000 examples from a sparse input space of dimensionality 1,000,000, with the number of nonzero elements per example sampled uniformly between 10 and 100. You can leverage `make_dataset.py` and the command line parameters to create a dataset of your choosing.
 
 This dataset also uniformly samples nonzero entries from the input space. Feel free to implement your own `get_example_data` function in `make_dataset.py` to implement a different distrubution.
