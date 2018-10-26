@@ -4,7 +4,7 @@ GPU friendly TensorFlow implementation of Hogwild!, the sparse asynchronous opti
 
 Also shows how to leverage sparse data with the dataset API. You can see the proper way of making a TFRecords dataset in `make_dataset.py`, and the proper way of loading it in `Hogwild.py`. The key is in the VarLenFeature object, which produces SparseTensors. We create SparseTensors which represent both the nonzero indices in a sparse dataset, as well as the values at those indices. To get a better idea of this, pretend the matrix below is our sparse dataset.
 
-<img src="sparse_embedding.png"></img>
+<img src="img/sparse_embedding.png"></img>
 
 The tensor on the left corresponds to "nz_idx", with indices given by the left two columns and values given by the column beneath it, while the tensor on the right corresponds to the same format for "nz_values".
 
