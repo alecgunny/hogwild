@@ -93,6 +93,9 @@ fi
 
 PYTHON_ARGS+="--num_workers $((WORKERS*NUM_GPUS))"
 
+# avoid ulimit issues (tested up to at least 16 processes)
+ulimit -u 8192
+
 # utility function for creating the necessary volume mounts for model checkpointing and profiling
 check_dir (){
   HOST_DIR="$1"
@@ -113,7 +116,7 @@ check_dir (){
 }
 
 # build the base command
-DOCKER_CMD="docker run --rm -u $(id -u):$(id -g) -v $PWD:/workspace/ --workdir /workspace --net=host"
+DOCKER_CMD="docker run --rm -d -u $(id -u):$(id -g) -v $PWD:/workspace/ --workdir /workspace --net=host"
 
 # add volume mounts for saving data out from container
 DOCKER_CMD+=$(check_dir $MODEL_DIR /tmp/model)
@@ -130,11 +133,11 @@ PYTHON_ARGS+=" --dataset_path /data/$DATASET_FILE"
 # initialize chief node and parameter server
 HASHES=""
 
-CHIEF+="$DOCKER_CMD -d --name=chief tensorflow/tensorflow:latest-py3 python Hogwild.py --job_name chief --task_index 0 $PYTHON_ARGS"
+CHIEF+="$DOCKER_CMD --name=chief tensorflow/tensorflow:latest-py3 python Hogwild.py --job_name chief --task_index 0 $PYTHON_ARGS"
 echo $CHIEF
 HASHES+=$($CHIEF)" "
 
-PS="$DOCKER_CMD -d --name=ps tensorflow/tensorflow:latest-py3 python Hogwild.py --job_name ps --task_index 0 $PYTHON_ARGS"
+PS="$DOCKER_CMD --name=ps tensorflow/tensorflow:latest-py3 python Hogwild.py --job_name ps --task_index 0 $PYTHON_ARGS"
 echo $PS
 HASHES+=$($PS)" "
 
@@ -143,9 +146,6 @@ for g in $( seq 0 $((NUM_GPUS-1)) ); do
   WORKER_CMD=$DOCKER_CMD
   if [[ "$TAG" == "latest-gpu" ]]; then
     WORKER_CMD+=" --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=$g"
-  fi
-  if [[ "$g" == 0 ]]; then
-    WORKER_CMD+=" -d"
   fi
   WORKER_CMD+=" --name=worker$g tensorflow/tensorflow:$TAG-py3 ./run_single_gpu.sh $WORKERS $g $PYTHON_ARGS"
   echo $WORKER_CMD
