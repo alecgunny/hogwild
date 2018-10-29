@@ -34,7 +34,12 @@ import os
 import json
 import numpy as np
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+# hardcoding some values which probably deserve to be command line args
+_N_CLASSES=10
+_DATASET_SIZE=10000
+
 
 class _LoggerHook(tf.train.SessionRunHook):
   """Logs loss and runtime."""
@@ -126,10 +131,36 @@ def model_fn(
       mode, loss=loss, eval_metric_ops=metrics)
 
 
-def main():
-  # TODO: hardcoded
-  n_classes = 10
+def parse_batch(records):
+  features={
+    'nz_idx': tf.VarLenFeature(tf.int64),
+    'label': tf.FixedLenFeature(shape=[], dtype=tf.int64)
+  }
+  if not FLAGS.binary_inputs:
+    features['nz_values'] = tf.VarLenFeature(tf.float32)
 
+  parsed = tf.parse_example(records, features)
+  label = parsed.pop('label')
+  return parsed, label
+
+
+def train_input_fn():
+  dataset = tf.data.TFRecordDataset(FLAGS.dataset_path)
+
+  steps_per_epoch = (_DATASET_SIZE - 1) // FLAGS.batch_size + 1
+  num_epochs = (FLAGS.steps - 1) // steps_per_epoch + 1
+  # dataset = dataset.apply(tf.data.experimental.shuffle_and_repeat(buffer_size=5000, count=num_epochs))
+  dataset = dataset.apply(tf.contrib.data.shuffle_and_repeat(buffer_size=5000, count=num_epochs))
+
+  # can't use map_and_batch because we need to batch first to use parse_example so that
+  # VarLenFeature is aware of the index of an example within the batch
+  dataset = dataset.batch(FLAGS.batch_size)
+  dataset = dataset.map(parse_batch)
+
+  return dataset
+
+
+def main():
   gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5, allow_growth=True)
   session_config = tf.ConfigProto(gpu_options=gpu_options)
   config = tf.estimator.RunConfig(
@@ -141,30 +172,12 @@ def main():
   estimator_params = {
     'dense_size': FLAGS.dense_size,
     'hidden_units': FLAGS.hidden_sizes,
-    'n_classes': n_classes}
+    'n_classes': _N_CLASSES}
 
   estimator = tf.estimator.Estimator(
     model_fn=model_fn,
     params=estimator_params,
     config=config)
-
-  def parse_batch(records):
-    features={
-      'nz_idx': tf.VarLenFeature(tf.int64),
-      'label': tf.FixedLenFeature(shape=[], dtype=tf.int64)}
-    if not FLAGS.binary_inputs:
-      features['nz_values'] = tf.VarLenFeature(tf.float32)
-
-    parsed = tf.parse_example(records, features)
-    label = parsed.pop('label')
-    return parsed, label
-
-  def train_input_fn():
-    dataset = tf.data.TFRecordDataset(FLAGS.dataset_path)
-    dataset = dataset.shuffle(buffer_size=5000)
-    dataset = dataset.batch(FLAGS.batch_size)
-    dataset = dataset.map(parse_batch)
-    return dataset
 
   train_hooks = [_LoggerHook(FLAGS.log_frequency)]
   if FLAGS.profile_dir is not None and FLAGS.job_name=='worker':
@@ -178,6 +191,7 @@ def main():
   train_spec = tf.estimator.TrainSpec(input_fn=train_input_fn, max_steps=FLAGS.steps, hooks=train_hooks)
   eval_spec = tf.estimator.EvalSpec(input_fn=train_input_fn, steps=1, start_delay_secs=500)
   tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
+
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
