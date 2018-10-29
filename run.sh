@@ -94,7 +94,9 @@ fi
 PYTHON_ARGS+="--num_workers $((WORKERS*NUM_GPUS))"
 
 # avoid ulimit issues (tested up to at least 16 processes)
-ulimit -u 8192
+if [[ "$(ulimit -u)" -lt 8192 ]]; then
+  ulimit -u 8192
+fi
 
 # utility function for creating the necessary volume mounts for model checkpointing and profiling
 check_dir (){
