@@ -216,6 +216,12 @@ if __name__ == '__main__':
     default=1,
     help="Number of worker tasks")
 
+  parser.add_argument(
+    "--num_ps",
+    type=int,
+    default=1,
+    help="Number of parameter servers")
+
   # Flags for defining model properties
   parser.add_argument(
     "--hidden_sizes",
@@ -284,9 +290,9 @@ if __name__ == '__main__':
 
   if FLAGS.num_workers > 1:
     cluster = {
-      'ps': ['localhost: 2221'],
-      'chief': ['localhost:2222'],
-      'worker': ['localhost:{}'.format(i+2223) for i in range(FLAGS.num_workers)]
+      'chief': ['localhost:2221'],
+      'ps': ['localhost:{}'.format(2222+i) for i in range(FLAGS.num_ps)],
+      'worker': ['localhost:{}'.format(2222+FLAGS.num_ps+i) for i in range(FLAGS.num_workers)]
     }
     os.environ['TF_CONFIG'] =  json.dumps(
       {'cluster': cluster,

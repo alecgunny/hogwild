@@ -139,9 +139,11 @@ CHIEF+="$DOCKER_CMD --name=chief tensorflow/tensorflow:latest-py3 python Hogwild
 echo $CHIEF
 HASHES+=$($CHIEF)" "
 
-PS="$DOCKER_CMD --name=ps tensorflow/tensorflow:latest-py3 python Hogwild.py --job_name ps --task_index 0 $PYTHON_ARGS"
-echo $PS
-HASHES+=$($PS)" "
+for i in $(seq 0 0); do
+  PS="$DOCKER_CMD --name=ps tensorflow/tensorflow:latest-py3 python Hogwild.py --job_name ps --task_index $i $PYTHON_ARGS"
+  echo $PS
+  HASHES+=$($PS)" "
+done
 
 # execute worker nodes on each GPU
 for g in $( seq 0 $((NUM_GPUS-1)) ); do
