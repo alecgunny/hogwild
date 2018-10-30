@@ -37,8 +37,8 @@ DATASET_PATH="data/train.tfrecords"
 TAG=latest-gpu
 KEEP=false
 
-SHORT_OPTS="b:w:e:d:i:s:f:o:p:l:g:cxkh"
-LONG_OPTS="batch_size:,workers:,steps:,hidden_sizes:,log_frequency:,dataset_path:,dense_size:,model_dir:,profile_dir:,log_dir:,num_gpus:,cpu,binary_inputs,keep,help"
+SHORT_OPTS="b:w:e:E:n:d:i:s:f:o:p:l:g:cxkh"
+LONG_OPTS="batch_size:,workers:,steps:,epochs:,dataset_size:,hidden_sizes:,log_frequency:,dataset_path:,dense_size:,model_dir:,profile_dir:,log_dir:,num_gpus:,cpu,binary_inputs,keep,help"
 OPTS=`getopt -o $SHORT_OPTS --long $LONG_OPTS -n 'parse-options' -- "$@"`
 if [ $? != 0 ] ; then echo "Failed parsing options." >&2 ; exit 1 ; fi
 eval set -- "$OPTS"
@@ -49,6 +49,8 @@ while true; do
     -b | --batch_size       ) PYTHON_ARGS+="--batch_size $2 "; shift; shift ;;
     -w | --workers          ) WORKERS=$2; shift; shift ;;
     -e | --steps            ) PYTHON_ARGS+="--steps $2 "; shift; shift ;;
+    -E | --epochs           ) PYTHON_ARGS+="--epochs $2 "; shift; shift ;;
+    -n | --dataset_size     ) PYTHON_ARGS+="--dataset_size $2 "; shift; shift ;;
     -d | --dataset_path     ) DATASET_PATH=$2; shift; shift ;;
     -i | --dense_size       ) PYTHON_ARGS+="--dense_size $2 "; shift; shift ;;
     -s | --hidden_sizes     ) PYTHON_ARGS+="--hidden_sizes ${2//,/ } "; shift; shift ;;
@@ -72,7 +74,9 @@ if [ "$HELP" = true ]; then
   echo "----------"
   echo "    --batch_size, -b       : batch size of a single gradient step"
   echo "    --workers, -w          : number of copies of the model to train concurrently per GPU"
-  echo "    --steps, -e            : total number of gradient steps. Since each worker takes a few seconds to spin up, running for more epochs can make speedups more pronounced"
+  echo "    --steps, -e            : total number of gradient steps"
+  echo "    --epochs, -E           : total number of steps specified by times through dataset. Takes precedence over --steps"
+  echo "    --dataset_size, -n     : number of samples in dataset"
   echo "    --dataset_path, -d     : path to tfrecord dataset"
   echo "    --dense_size, -i       : dimensionality of input space"
   echo "    --hidden_sizes, -s     : size of hidden layers of MLP seperated by commas (e.g. 512,512,256)"
@@ -139,11 +143,9 @@ CHIEF+="$DOCKER_CMD --name=chief tensorflow/tensorflow:latest-py3 python Hogwild
 echo $CHIEF
 HASHES+=$($CHIEF)" "
 
-for i in $(seq 0 0); do
-  PS="$DOCKER_CMD --name=ps tensorflow/tensorflow:latest-py3 python Hogwild.py --job_name ps --task_index $i $PYTHON_ARGS"
-  echo $PS
-  HASHES+=$($PS)" "
-done
+PS="$DOCKER_CMD --name=ps tensorflow/tensorflow:latest-py3 python Hogwild.py --job_name ps --task_index 0 $PYTHON_ARGS"
+echo $PS
+HASHES+=$($PS)" "
 
 # execute worker nodes on each GPU
 for g in $( seq 0 $((NUM_GPUS-1)) ); do

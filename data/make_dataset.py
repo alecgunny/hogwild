@@ -35,8 +35,9 @@ def get_example_data():
   edit this code to create datasets with different distributions
   """
   nnz = np.random.randint(FLAGS.min_nnz, FLAGS.max_nnz)
-  nz_idx = np.random.choice(np.arange(FLAGS.dense_size), replace=False, size=nnz)
-  nz_values = np.random.uniform(10, size=nnz)
+  nz_idx = np.random.randint(FLAGS.dense_size, size=nnz)
+  nz_idx = np.unique(nz_idx)
+  nz_values = np.random.uniform(10, size=nz_idx.size)
   label = np.random.randint(FLAGS.num_classes)
   return nz_idx, nz_values, label
 
@@ -52,7 +53,8 @@ def main():
        'label': tf.train.Feature(int64_list=tf.train.Int64List(value=[label]))
       }))
 
-    writer.write(example.SerializeToString())
+    serialized = example.SerializeToString()
+    writer.write(serialized)
   writer.close()
 
 if __name__ == '__main__':

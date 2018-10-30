@@ -36,9 +36,8 @@ import numpy as np
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-# hardcoding some values which probably deserve to be command line args
+# hardcoding this for now, should be command line arg
 _N_CLASSES=10
-_DATASET_SIZE=10000
 
 
 class _LoggerHook(tf.train.SessionRunHook):
@@ -147,10 +146,8 @@ def parse_batch(records):
 def train_input_fn():
   dataset = tf.data.TFRecordDataset(FLAGS.dataset_path)
 
-  steps_per_epoch = (_DATASET_SIZE - 1) // FLAGS.batch_size + 1
-  num_epochs = (FLAGS.steps - 1) // steps_per_epoch + 1
-  # dataset = dataset.apply(tf.data.experimental.shuffle_and_repeat(buffer_size=5000, count=num_epochs))
-  dataset = dataset.apply(tf.contrib.data.shuffle_and_repeat(buffer_size=5000, count=num_epochs))
+  # dataset = dataset.apply(tf.data.experimental.shuffle_and_repeat(buffer_size=5000, count=FLAGS.epochs))
+  dataset = dataset.apply(tf.contrib.data.shuffle_and_repeat(buffer_size=5000, count=FLAGS.epochs))
 
   # can't use map_and_batch because we need to batch first to use parse_example so that
   # VarLenFeature is aware of the index of an example within the batch
@@ -243,6 +240,18 @@ if __name__ == '__main__':
     help="total number of gradient updates to apply")
 
   parser.add_argument(
+    "--epochs",
+    type=int,
+    default=None,
+    help="number of times to go through the dataset. Takes precedence over --steps")
+
+  parser.add_argument(
+    "--dataset_size",
+    type=int,
+    default=None,
+    help="number of examples in dataset")
+
+  parser.add_argument(
     "--model_dir",
     type=str,
     default=None,
@@ -287,6 +296,12 @@ if __name__ == '__main__':
   FLAGS = parser.parse_args()
   if FLAGS.dense_size < 30:
     FLAGS.dense_size = 1 << FLAGS.dense_size
+
+  steps_per_epoch = (FLAGS.dataset_size - 1) // FLAGS.batch_size + 1
+  if FLAGS.epochs is not None:
+    FLAGS.steps = steps_per_epoch * FLAGS.epochs
+  else:
+    FLAGS.epochs = (FLAGS.steps - 1) // steps_per_epoch + 1
 
   if FLAGS.num_workers > 1:
     cluster = {
