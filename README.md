@@ -1,6 +1,6 @@
-# Hogwild! for TensorFlow on GPUs
+# Hogwild! for TensorFlow
 
-GPU friendly TensorFlow implementation of Hogwild!, the sparse asynchronous optimization algorithm, introduced in <a href=https://people.eecs.berkeley.edu/~brecht/papers/hogwildTR.pdf>this paper</a> from Berkeley (Go Bears). Leverages the TF estimator API to build a multilayer perceptron with a tf.nn.embedding_lookup_sparse operation at the front to replace the traditional matrix multiplication.
+TensorFlow implementation of Hogwild!, the sparse asynchronous optimization algorithm, introduced in <a href=https://people.eecs.berkeley.edu/~brecht/papers/hogwildTR.pdf>this paper</a> from Berkeley (Go Bears). Leverages the TF estimator API to build a multilayer perceptron with a tf.nn.embedding_lookup_sparse operation at the front to replace the traditional matrix multiplication.
 
 Also shows how to leverage sparse data with the dataset API. You can see the proper way of making a sparse TFRecords dataset in `data/make_dataset.py`, and the proper way of loading it in `Hogwild.py`. The key is in the VarLenFeature object, which produces SparseTensors. We create SparseTensors which represent both the nonzero indices in a sparse dataset, as well as the values at those indices. To get a better idea of this, pretend the matrix below is our sparse dataset.
 
